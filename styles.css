@@ -600,12 +600,21 @@ input:focus, select:focus {
 }
 
 /* Schedule Display */
+.schedule-panel {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .schedule-grid.mode-weekly {
   display: grid;
-  grid-template-columns: repeat(7, minmax(132px, 1fr));
+  grid-template-columns: repeat(7, minmax(140px, 1fr));
   gap: 1px;
+  background: var(--line);
   overflow-x: auto;
   padding: 1px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .schedule-grid.mode-daily {
@@ -614,8 +623,11 @@ input:focus, select:focus {
 }
 
 .day-column {
-  min-width: 132px;
+  min-width: 140px;
+  width: 100%;
   background: rgba(255, 255, 255, 0.035);
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .schedule-grid.mode-daily .day-column {
@@ -625,47 +637,63 @@ input:focus, select:focus {
 }
 
 .day-head {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 5px;
   min-height: 82px;
-  align-content: center;
-  padding: 14px;
+  justify-content: center;
+  padding: 12px;
   border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .day-head-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 4px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .day-head strong {
-  font-size: 0.96rem;
+  font-size: 0.9rem;
   line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .demand-pill {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 900;
   padding: 2px 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
   color: var(--soft);
+  flex: 0 0 auto;
 }
 
 .day-sales-sub {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shift {
-  display: grid;
-  min-height: 178px;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
+  min-height: 160px;
   gap: 10px;
-  padding: 14px;
+  padding: 12px;
   border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .shift:last-child {
@@ -674,50 +702,77 @@ input:focus, select:focus {
 
 .shift-title {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 0.76rem;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.shift-name-tag {
+  font-size: 0.74rem;
   font-weight: 900;
   text-transform: uppercase;
+  color: var(--white);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shift-meta-tag {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .shift-chips-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 /* Staff Chips */
 .person-chip {
   display: flex;
-  min-height: 36px;
+  min-height: 34px;
   align-items: center;
-  gap: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  padding: 7px 12px;
+  padding: 5px 8px;
   background: rgba(255, 255, 255, 0.07);
   color: var(--white);
-  font-size: 0.83rem;
+  font-size: 0.8rem;
   font-weight: 800;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .chip-avatar {
   display: grid;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   place-items: center;
   border-radius: 50%;
   background: var(--white);
   color: var(--ink);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 900;
+  flex: 0 0 auto;
 }
 
 .chip-name {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chip-role,
@@ -1037,15 +1092,63 @@ input:focus, select:focus {
 
 .matrix-row {
   display: grid;
-  grid-template-columns: 90px 1fr 1fr;
-  align-items: center;
+  grid-template-columns: 80px 1fr;
+  align-items: start;
   gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.matrix-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .matrix-day-name {
   font-weight: 800;
   font-size: 0.85rem;
   color: var(--white);
+  padding-top: 6px;
+}
+
+.matrix-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.custom-hours-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.custom-time-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.custom-time-inputs.hidden {
+  display: none !important;
+}
+
+.custom-time-inputs input[type="time"] {
+  min-height: 36px;
+  padding: 0 6px;
+  font-size: 0.8rem;
+  width: 105px;
+}
+
+.custom-time-inputs span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .matrix-check {
