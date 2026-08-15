@@ -20,14 +20,19 @@ CREATE TABLE sales_history (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Sessions table
-CREATE TABLE sessions (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  session_token TEXT NOT NULL UNIQUE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  expires_at TIMESTAMP WITH TIME ZONE
-);
-
 -- Indexes
-CREATE INDEX idx_sessions_token ON sessions(session_token);
 CREATE INDEX idx_sales_history_date ON sales_history(recorded_at);
+
+-- RLS Policies (only for authenticated users via Supabase Auth)
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow authenticated users to manage employees" 
+ON employees FOR ALL 
+USING (auth.role() = 'authenticated') 
+WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Allow authenticated users to manage sales_history" 
+ON sales_history FOR ALL 
+USING (auth.role() = 'authenticated') 
+WITH CHECK (auth.role() = 'authenticated');
