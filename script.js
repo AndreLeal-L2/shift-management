@@ -716,16 +716,27 @@ function generateSchedule() {
   }
 }
 
+function getInitials(name) {
+  if (!name) return "";
+  const parts = name.trim().split(" ");
+  if (parts.length === 1) {
+    return parts[0].slice(0, 3).toUpperCase();
+  }
+  return parts.map(part => part.slice(0, 1).toUpperCase()).join("");
+}
+
 function renderShift(name, hours, people, required) {
+  const isWeekly = currentViewMode === "weekly";
   const chips = people
     .map((person) => {
       const badge = getRoleBadgeClass(person.role);
       const hoursText = person.assignedHoursText || hours;
+      const displayName = isWeekly ? getInitials(person.name) : person.name;
       return `
         <div class="person-chip" title="${person.name} (${person.role}) · ${hoursText}">
           <div class="chip-main-row">
             <span class="chip-avatar">${person.name.slice(0, 1).toUpperCase()}</span>
-            <span class="chip-name">${person.name}</span>
+            <span class="chip-name">${displayName}</span>
             <span class="chip-role ${badge}">${person.role}</span>
           </div>
           <div class="chip-hours-badge">${hoursText}</div>
@@ -733,7 +744,7 @@ function renderShift(name, hours, people, required) {
       `;
     })
     .join("");
-    
+
   const missing = Array.from({ length: Math.max(0, required - people.length) })
     .map(() => `<div class="person-chip missing"><i data-lucide="user-minus"></i> Por preencher</div>`)
     .join("");
