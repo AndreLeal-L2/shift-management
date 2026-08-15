@@ -734,10 +734,18 @@ input:focus {
   font-weight: 900;
 }
 
-.remove-member {
+.member-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-btn,
+.remove-member,
+.edit-member {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -749,6 +757,13 @@ input:focus {
     background-color 180ms ease,
     color 180ms ease,
     transform 180ms ease;
+}
+
+.edit-member:hover {
+  border-color: rgba(155, 220, 255, 0.7);
+  background: rgba(155, 220, 255, 0.1);
+  color: #9bdaff;
+  transform: translateY(-1px);
 }
 
 .remove-member:hover {
@@ -782,6 +797,175 @@ input:focus {
   font-size: 0.72rem;
 }
 
+/* Empty state */
+.empty-state {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 48px 24px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-state i {
+  width: 38px;
+  height: 38px;
+  opacity: 0.6;
+}
+
+/* Modal Styles */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+.modal-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-card {
+  display: flex;
+  flex-direction: column;
+  width: min(540px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  background: rgba(18, 18, 18, 0.96);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.7);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--white);
+  transition: background 180ms ease;
+}
+
+.modal-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.modal-form {
+  display: grid;
+  gap: 18px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.modal-form select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 0 11px;
+  background: rgba(24, 24, 24, 0.95);
+  color: var(--white);
+  font: inherit;
+  outline: none;
+}
+
+.availability-matrix {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.matrix-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.matrix-table {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.matrix-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.matrix-day-name {
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: var(--white);
+}
+
+.matrix-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: none;
+  user-select: none;
+}
+
+.matrix-check input[type="checkbox"] {
+  width: 16px;
+  min-height: 16px;
+  cursor: pointer;
+  accent-color: var(--white);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 10px;
+}
+
 @media (max-width: 1060px) {
   .stage {
     min-height: 600px;
@@ -803,82 +987,99 @@ input:focus {
 
 @media (max-width: 760px) {
   .app-shell {
-    padding: 24px 14px 42px;
+    padding: 20px 14px 100px;
   }
 
   .topbar {
-    justify-content: center;
+    justify-content: space-between;
+    padding: 0 4px;
   }
 
   .logout-action {
-    position: fixed;
-    right: 14px;
-    bottom: 14px;
-    z-index: 20;
-    width: auto;
+    position: static;
+    min-height: 38px;
+    padding: 0 14px;
+    font-size: 0.82rem;
   }
 
   .brand {
-    font-size: 1.55rem;
-    text-align: center;
+    font-size: 1.6rem;
+    text-align: left;
   }
 
-  .pill-button {
-    width: 44px;
-    padding: 0;
-  }
-
-  .pill-button:not(.ghost) {
-    font-size: 0;
+  input, select, textarea {
+    font-size: 16px !important;
   }
 
   .stage {
-    min-height: 560px;
-    padding-bottom: 92px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    min-height: auto;
+    padding: 16px 0 32px;
+  }
+
+  .hero-copy {
+    grid-column: 1 / -1;
+    order: -1;
+    width: 100%;
+    text-align: center;
+    margin-bottom: 12px;
   }
 
   .hero-copy h1 {
-    font-size: clamp(3.1rem, 16vw, 5.7rem);
+    font-size: clamp(2.5rem, 11vw, 3.8rem);
   }
 
   .hero-copy p:last-child {
-    margin-top: 24px;
-    font-size: 1rem;
+    margin-top: 14px;
+    font-size: 0.95rem;
   }
 
   .floating-tile {
-    width: 104px;
+    position: static !important;
+    transform: none !important;
+    display: flex !important;
+    flex-direction: column;
+    justify-content: center;
+    width: 100% !important;
+    aspect-ratio: auto;
+    min-height: 80px;
+    padding: 12px;
+    border-radius: 8px;
+    box-shadow: none;
   }
 
   .floating-tile span {
-    font-size: 0.63rem;
+    font-size: 0.68rem;
   }
 
   .floating-tile strong {
-    font-size: 1.2rem;
-  }
-
-  .tile-left,
-  .tile-right {
-    top: 14%;
-  }
-
-  .tile-left-mid,
-  .tile-right-mid {
-    top: auto;
-    bottom: 12%;
+    font-size: 1.3rem;
   }
 
   .tile-left-low,
   .tile-right-low {
-    display: none;
+    display: flex !important;
   }
 
   .dock {
-    justify-content: start;
-    overflow-x: auto;
-    margin-top: -104px;
-    margin-bottom: 54px;
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    margin: 0;
+    justify-content: space-around;
+    padding: 6px;
+    z-index: 90;
+    box-shadow: 0 16px 50px rgba(0, 0, 0, 0.7);
+  }
+
+  .dock a {
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 0.75rem;
   }
 
   .section-heading {
@@ -889,6 +1090,7 @@ input:focus {
   .primary-action,
   .secondary-action {
     width: 100%;
+    min-height: 46px;
   }
 
   .rule-list {
@@ -901,5 +1103,19 @@ input:focus {
 
   .team-grid {
     grid-template-columns: 1fr;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .matrix-row {
+    grid-template-columns: 75px 1fr 1fr;
+    gap: 6px;
+  }
+
+  .matrix-check {
+    padding: 6px 6px;
+    font-size: 0.72rem;
   }
 }

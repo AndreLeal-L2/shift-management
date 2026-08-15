@@ -4,6 +4,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // Helper function para validar token
 async function validateToken(token) {
+  if (!token) return null;
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data, error } = await supabase.auth.getUser(token);
   

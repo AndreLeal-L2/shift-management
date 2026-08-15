@@ -47,19 +47,19 @@
       <section class="stage" aria-labelledby="page-title">
         <div class="floating-tile tile-left tile-availability">
           <span>Disponibilidade</span>
-          <strong>87%</strong>
+          <strong id="availability-stat">0%</strong>
         </div>
         <div class="floating-tile tile-left-mid tile-sales">
           <span>Venda média</span>
-          <strong>€1.840</strong>
+          <strong id="sales-stat">€0</strong>
         </div>
         <div class="floating-tile tile-left-low tile-coverage">
           <span>Cobertura</span>
-          <strong>6/6</strong>
+          <strong id="coverage-stat">0/0</strong>
         </div>
         <div class="floating-tile tile-right tile-team">
           <span>Equipa ativa</span>
-          <strong id="team-count">10</strong>
+          <strong id="team-count">0</strong>
         </div>
         <div class="floating-tile tile-right-mid tile-alert">
           <span>Conflitos</span>
@@ -67,7 +67,7 @@
         </div>
         <div class="floating-tile tile-right-low tile-hours">
           <span>Operação</span>
-          <strong>08:30-23:00</strong>
+          <strong id="operation-hours-stat">08:30-23:00</strong>
         </div>
 
         <div class="hero-copy">
@@ -186,6 +186,55 @@
         <div class="team-grid" id="team-grid"></div>
       </section>
     </main>
+
+    <!-- Modal Adicionar/Editar Colaborador -->
+    <div class="modal-backdrop" id="employee-modal" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-labelledby="modal-title">
+        <div class="modal-header">
+          <h3 id="modal-title">Adicionar Colaborador</h3>
+          <button type="button" class="modal-close" id="modal-close" aria-label="Fechar">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <form id="employee-form" class="modal-form">
+          <input type="hidden" id="emp-id" value="" />
+          <div class="form-row">
+            <label>
+              Nome
+              <input type="text" id="emp-name" required placeholder="Ex: Maria Santos" />
+            </label>
+            <label>
+              Cargo
+              <select id="emp-role" required>
+                <option value="Sala">Sala</option>
+                <option value="Cozinha">Cozinha</option>
+                <option value="Bar">Bar</option>
+                <option value="Caixa">Caixa</option>
+                <option value="Apoio">Apoio</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              Horas Máx / Semana
+              <input type="number" id="emp-max-hours" min="1" max="60" value="40" required />
+            </label>
+          </div>
+          
+          <div class="availability-matrix">
+            <p class="matrix-label">Disponibilidade Semanal</p>
+            <div class="matrix-table" id="availability-matrix-grid">
+              <!-- Renderizado dinamicamente por JS -->
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="secondary-action" id="modal-cancel">Cancelar</button>
+            <button type="submit" class="primary-action" id="modal-save">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="./script.js"></script>

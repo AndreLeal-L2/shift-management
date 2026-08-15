@@ -4,6 +4,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // Helper function para validar token
 async function validateToken(token) {
+  if (!token) return null;
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data, error } = await supabase.auth.getUser(token);
   
@@ -51,18 +52,41 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'POST') {
-      const { name, role, maxHours, availability } = req.body;
+      const { name, role, maxHours, max_hours, availability } = req.body || {};
+      const hours = maxHours !== undefined ? maxHours : max_hours;
       const { data, error } = await supabase
         .from('employees')
-        .insert([{ name, role, max_hours: maxHours, availability }])
+        .insert([{ name, role, max_hours: hours, availability }])
         .select();
 
       if (error) throw error;
       return res.status(201).json(data[0]);
     }
 
+    if (req.method === 'PUT') {
+      const { id, name, role, maxHours, max_hours, availability } = req.body || {};
+      const hours = maxHours !== undefined ? maxHours : max_hours;
+      const { data, error } = await supabase
+        .from('employees')
+        .update({ name, role, max_hours: hours, availability, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select();
+
+      if (error) throw error;
+      return res.status(200).json(data[0]);
+    }
+
     if (req.method === 'DELETE') {
-      const { id } = req.query;
+      let id = req.query?.id;
+      if (!id && req.url) {
+        try {
+          const urlObj = new URL(req.url, 'http://localhost');
+          id = urlObj.searchParams.get('id');
+        } catch (e) {}
+      }
+      if (!id) {
+        return res.status(400).json({ error: 'Missing employee id' });
+      }
       const { error } = await supabase
         .from('employees')
         .delete()
