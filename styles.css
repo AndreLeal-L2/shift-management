@@ -184,9 +184,9 @@ i[data-lucide] {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 8px;
   margin-bottom: 16px;
-  flex-wrap: wrap;
+  flex-direction: column;
 }
 
 .hero-logo-large {
