@@ -1439,7 +1439,7 @@ input:focus, select:focus {
     display: none !important;
   }
 
-  /* Fixed Dock at Bottom (Grid 4 colunas com safe-area iOS) */
+  /* Fixed Dock at Bottom (Grid 5 colunas com safe-area iOS) */
   .dock {
     position: fixed;
     bottom: calc(10px + env(safe-area-inset-bottom, 8px));
@@ -1450,11 +1450,11 @@ input:focus, select:focus {
     max-width: calc(100vw - 20px);
     margin: 0 auto;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     align-items: center;
     justify-items: center;
-    gap: 4px;
-    padding: 4px;
+    gap: 2px;
+    padding: 6px 4px;
     border-radius: 999px;
     background: rgba(12, 12, 12, 0.94);
     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1466,14 +1466,15 @@ input:focus, select:focus {
 
   .dock a {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 5px;
+    gap: 2px;
     width: 100%;
-    min-height: 42px;
-    padding: 0 4px;
+    min-height: 44px;
+    padding: 4px 2px;
     border-radius: 999px;
-    font-size: 0.72rem;
+    font-size: 0.65rem;
     font-weight: 800;
     color: rgba(255, 255, 255, 0.75);
     text-align: center;
@@ -1482,8 +1483,8 @@ input:focus, select:focus {
   }
 
   .dock a i {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
   }
 
   .dock a.active {
@@ -1499,11 +1500,20 @@ input:focus, select:focus {
   .schedule-actions-bar {
     justify-content: space-between;
     width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .schedule-actions-bar .form-row {
+    flex: 1;
+    min-width: 120px;
   }
 
   .primary-action,
   .secondary-action {
     min-height: 44px;
+    flex: 1;
+    min-width: 140px;
   }
 
   .rule-list {
@@ -1530,5 +1540,55 @@ input:focus, select:focus {
   .matrix-check {
     padding: 6px 6px;
     font-size: 0.72rem;
+  }
+
+  /* Schedule grid mobile optimization */
+  .schedule-grid.mode-weekly {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .schedule-grid.mode-weekly .day-column {
+    min-width: 100%;
+    margin-bottom: 12px;
+  }
+
+  .person-chip {
+    padding: 8px 10px;
+  }
+
+  .chip-main-row {
+    gap: 8px;
+  }
+
+  .chip-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+  }
+
+  .chip-name {
+    font-size: 0.8rem;
+  }
+
+  .chip-role {
+    font-size: 0.6rem;
+    padding: 2px 5px;
+  }
+
+  .chip-hours-badge {
+    font-size: 0.6rem;
+  }
+
+  /* Stats grid mobile */
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Panel heading mobile */
+  .panel-heading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
   }
 }
