@@ -47,8 +47,7 @@ async function apiFetch(endpoint, options = {}) {
   if (!authToken) authToken = await getSessionToken();
   const headers = {
     "Content-Type": "application/json",
-    ...(authToken ? { "Authorization": `Bearer ${authToken}` } : {}),
-    ...(options.headers || {})
+    ...(authToken ? { "Authorization": `Bearer ${authToken}` } : {})
   };
   return fetch(`${API_BASE}${endpoint}`, { ...options, headers });
 }
@@ -118,7 +117,38 @@ function timeToMinutes(timeStr) {
   return (h || 0) * 60 + (m || 0);
 }
 
-// Check if employee is available for a shift (standard day/night or custom specific working hours)
+// Get exact duration in hours and display string for an employee's shift on a given day
+function getEmployeeShiftDetails(employee, dayKey, shift, openTime = "08:30", closeTime = "23:00") {
+  const avail = employee.availability?.[dayKey];
+  const openMins = timeToMinutes(openTime);
+  const closeMins = timeToMinutes(closeTime);
+  const shiftStartMins = shift === "day" ? openMins : timeToMinutes("16:00");
+  const shiftEndMins = shift === "day" ? timeToMinutes("16:00") : closeMins;
+  const defaultDuration = Math.max(0.5, (shiftEndMins - shiftStartMins) / 60);
+
+  if (!avail) {
+    return { duration: defaultDuration, display: shiftHours(shift, openTime, closeTime) };
+  }
+
+  // Legacy format: array of shift names
+  if (Array.isArray(avail)) {
+    return { duration: defaultDuration, display: shiftHours(shift, openTime, closeTime) };
+  }
+
+  // Object format with custom hours
+  if (typeof avail === "object" && avail !== null) {
+    if (avail.custom && avail.start && avail.end) {
+      const customStartMins = timeToMinutes(avail.start);
+      const customEndMins = timeToMinutes(avail.end);
+      const duration = Math.max(0.5, (customEndMins - customStartMins) / 60);
+      return { duration, display: `${avail.start}-${avail.end}` };
+    }
+  }
+
+  return { duration: defaultDuration, display: shiftHours(shift, openTime, closeTime) };
+}
+
+// Check if employee is available for a shift
 function isEmployeeAvailable(employee, dayKey, shift, openTime = "08:30", closeTime = "23:00") {
   const avail = employee.availability?.[dayKey];
   if (!avail) return false;
@@ -128,22 +158,18 @@ function isEmployeeAvailable(employee, dayKey, shift, openTime = "08:30", closeT
     return avail.includes(shift);
   }
 
-  // New object format
+  // Object format
   if (typeof avail === "object") {
-    // Check standard shift
     if (avail.shifts && avail.shifts.includes(shift)) {
       return true;
     }
 
-    // Check custom specific hours
     if (avail.custom && avail.start && avail.end) {
       const customStart = timeToMinutes(avail.start);
       const customEnd = timeToMinutes(avail.end);
-      
       const shiftStart = shift === "day" ? timeToMinutes(openTime) : timeToMinutes("16:00");
       const shiftEnd = shift === "day" ? timeToMinutes("16:00") : timeToMinutes(closeTime);
 
-      // Overlaps if custom start < shiftEnd and custom end > shiftStart
       return customStart < shiftEnd && customEnd > shiftStart;
     }
   }
@@ -357,7 +383,6 @@ function renderMatrixGrid(currentAvailability = {}) {
     container.appendChild(row);
   });
 
-  // Toggle handler for custom hours time inputs
   container.querySelectorAll("[data-day-toggle]").forEach((checkbox) => {
     checkbox.addEventListener("change", (e) => {
       const dayKey = e.target.dataset.dayToggle;
@@ -550,6 +575,7 @@ function renderTeam() {
   }
 }
 
+// Select employees calculating EXACT hours worked (not hardcoded 7.25h)
 function pickEmployees(dayKey, shift, required, openTime, closeTime) {
   const available = employees
     .filter((employee) => isEmployeeAvailable(employee, dayKey, shift, openTime, closeTime))
@@ -559,9 +585,16 @@ function pickEmployees(dayKey, shift, required, openTime, closeTime) {
 
   for (const employee of available) {
     const currentHours = assignedHours.get(employee.name) || 0;
-    if (currentHours + 7.25 <= employee.maxHours && selected.length < required) {
-      selected.push(employee);
-      assignedHours.set(employee.name, currentHours + 7.25);
+    const details = getEmployeeShiftDetails(employee, dayKey, shift, openTime, closeTime);
+    const duration = details.duration;
+
+    if (currentHours + duration <= employee.maxHours && selected.length < required) {
+      selected.push({
+        ...employee,
+        assignedHoursText: details.display,
+        assignedDuration: duration
+      });
+      assignedHours.set(employee.name, currentHours + duration);
     }
   }
 
@@ -695,11 +728,15 @@ function renderShift(name, hours, people, required) {
   const chips = people
     .map((person) => {
       const badge = getRoleBadgeClass(person.role);
+      const hoursText = person.assignedHoursText || hours;
       return `
-        <div class="person-chip" title="${person.name} (${person.role})">
-          <span class="chip-avatar">${person.name.slice(0, 1).toUpperCase()}</span>
-          <span class="chip-name">${person.name}</span>
-          <span class="chip-role ${badge}">${person.role}</span>
+        <div class="person-chip" title="${person.name} (${person.role}) · ${hoursText}">
+          <div class="chip-main-row">
+            <span class="chip-avatar">${person.name.slice(0, 1).toUpperCase()}</span>
+            <span class="chip-name">${person.name}</span>
+            <span class="chip-role ${badge}">${person.role}</span>
+          </div>
+          <div class="chip-hours-badge">${hoursText}</div>
         </div>
       `;
     })
