@@ -744,6 +744,61 @@ function generateSchedule() {
     }
   }
 
+  // Garantir pelo menos uma pessoa com 8h por dia
+  weekDays.forEach(day => {
+    const dayTotalHours = schedule[day.key].day.reduce((sum, p) => sum + p.assignedDuration, 0) +
+                          schedule[day.key].night.reduce((sum, p) => sum + p.assignedDuration, 0);
+    
+    // Se não tiver pelo menos 8h no dia, tentar mover alguém
+    if (dayTotalHours < 8) {
+      // Procurar dias com mais de uma pessoa e 8h+
+      for (const sourceDay of weekDays) {
+        if (sourceDay.key === day.key) continue;
+        
+        const sourceDayPeople = [...schedule[sourceDay.key].day, ...schedule[sourceDay.key].night];
+        if (sourceDayPeople.length > 1) {
+          // Encontrar alguém que possa ser movido
+          for (const person of sourceDayPeople) {
+            const isAvailable = isEmployeeAvailable(person, day.key, "day", openTime, closeTime) ||
+                               isEmployeeAvailable(person, day.key, "night", openTime, closeTime);
+            
+            if (isAvailable) {
+              // Verificar se pode ser movido
+              const currentHours = assignedHours.get(person.name) || 0;
+              const shiftToUse = isEmployeeAvailable(person, day.key, "day", openTime, closeTime) ? "day" : "night";
+              const details = getEmployeeShiftDetails(person, day.key, shiftToUse, openTime, closeTime);
+              const duration = details.duration;
+              
+              // Remover do dia original
+              const sourceShift = schedule[sourceDay.key].day.includes(person) ? "day" : "night";
+              const sourceArray = schedule[sourceDay.key][sourceShift];
+              const idx = sourceArray.findIndex(p => p.name === person.name);
+              if (idx !== -1) {
+                sourceArray.splice(idx, 1);
+                assignedHours.set(person.name, currentHours - person.assignedDuration);
+                
+                // Adicionar ao novo dia
+                if (currentHours - person.assignedDuration + duration <= person.maxHours) {
+                  schedule[day.key][shiftToUse].push({
+                    ...person,
+                    assignedHoursText: details.display,
+                    assignedDuration: duration
+                  });
+                  assignedHours.set(person.name, currentHours - person.assignedDuration + duration);
+                  break;
+                } else {
+                  // Reverter se não for possível
+                  sourceArray.push(person);
+                  assignedHours.set(person.name, currentHours);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
   // Renderizar a escala
   weekDays.forEach((day) => {
     const dayRequired = baseDayRequired;
