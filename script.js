@@ -19,7 +19,8 @@ const sessionKey = "rellenoShiftsSession";
 const API_BASE = "/api";
 let authToken = localStorage.getItem(sessionKey);
 
-// State for mobile view and active day
+// State for active page, view mode and selected day
+let currentPage = "escala";
 let currentViewMode = window.innerWidth <= 760 ? "daily" : "weekly";
 let selectedDayKey = "seg";
 
@@ -52,6 +53,35 @@ async function apiFetch(endpoint, options = {}) {
   return fetch(`${API_BASE}${endpoint}`, { ...options, headers });
 }
 
+// Page Navigation System
+function switchPage(pageId) {
+  const targetPage = pageId.replace("#", "");
+  const validPages = ["escala", "equipa", "regras", "vendas", "estatisticas"];
+  if (!validPages.includes(targetPage)) return;
+
+  currentPage = targetPage;
+
+  // Toggle page section visibility
+  document.querySelectorAll(".page-section").forEach((sec) => {
+    sec.classList.toggle("active", sec.id === `page-${targetPage}`);
+  });
+
+  // Update active state in navigation dock
+  document.querySelectorAll(".dock-item").forEach((item) => {
+    const isTarget = item.dataset.page === targetPage;
+    item.classList.toggle("active", isTarget);
+  });
+
+  // Smooth scroll to top of page section
+  window.scrollTo({ top: 0, behavior: "smooth" });
+
+  if (targetPage === "estatisticas") {
+    renderStatistics();
+  }
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
 async function handleLogin(event) {
   event.preventDefault();
   const email = document.querySelector("#login-email").value.trim().toLowerCase();
@@ -69,7 +99,7 @@ async function handleLogin(event) {
   });
 
   if (authError) {
-    error.textContent = "Email ou password inválidos.";
+    error.textContent = "Email ou palavra-passe inválidos.";
     return;
   }
 
@@ -110,14 +140,12 @@ function getRoleBadgeClass(role) {
   return "badge-apoio";
 }
 
-// Convert HH:MM string to minutes from midnight
 function timeToMinutes(timeStr) {
   if (!timeStr) return 0;
   const [h, m] = timeStr.split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
 }
 
-// Get exact duration in hours and display string for an employee's shift on a given day
 function getEmployeeShiftDetails(employee, dayKey, shift, openTime = "08:30", closeTime = "23:00") {
   const avail = employee.availability?.[dayKey];
   const openMins = timeToMinutes(openTime);
@@ -130,12 +158,10 @@ function getEmployeeShiftDetails(employee, dayKey, shift, openTime = "08:30", cl
     return { duration: defaultDuration, display: shiftHours(shift, openTime, closeTime) };
   }
 
-  // Legacy format: array of shift names
   if (Array.isArray(avail)) {
     return { duration: defaultDuration, display: shiftHours(shift, openTime, closeTime) };
   }
 
-  // Object format with custom hours
   if (typeof avail === "object" && avail !== null) {
     if (avail.custom && avail.start && avail.end) {
       const customStartMins = timeToMinutes(avail.start);
@@ -148,17 +174,14 @@ function getEmployeeShiftDetails(employee, dayKey, shift, openTime = "08:30", cl
   return { duration: defaultDuration, display: shiftHours(shift, openTime, closeTime) };
 }
 
-// Check if employee is available for a shift
 function isEmployeeAvailable(employee, dayKey, shift, openTime = "08:30", closeTime = "23:00") {
   const avail = employee.availability?.[dayKey];
   if (!avail) return false;
 
-  // Legacy format: array of strings ["day", "night"]
   if (Array.isArray(avail)) {
     return avail.includes(shift);
   }
 
-  // Object format
   if (typeof avail === "object") {
     if (avail.shifts && avail.shifts.includes(shift)) {
       return true;
@@ -168,7 +191,7 @@ function isEmployeeAvailable(employee, dayKey, shift, openTime = "08:30", closeT
       const customStart = timeToMinutes(avail.start);
       const customEnd = timeToMinutes(avail.end);
       const shiftStart = shift === "day" ? timeToMinutes(openTime) : timeToMinutes("16:00");
-      const shiftEnd = shift === "day" ? timeToMinutes("16:00") : timeToMinutes(closeTime);
+      const shiftEnd = shift === "day" ? timeToMinutes(closeTime) : timeToMinutes(closeTime);
 
       return customStart < shiftEnd && customEnd > shiftStart;
     }
@@ -195,9 +218,10 @@ async function loadSalesHistory() {
       renderSales();
       renderMobileDaySelector();
       generateSchedule();
+      renderStatistics();
     }
   } catch (err) {
-    console.error("Failed to load sales history:", err);
+    console.error("Erro ao carregar histórico de vendas:", err);
   }
 }
 
@@ -213,7 +237,7 @@ async function saveSalesHistory() {
       await loadSalesHistory();
     }
   } catch (err) {
-    console.error("Failed to save sales history:", err);
+    console.error("Erro ao guardar histórico de vendas:", err);
   }
 }
 
@@ -266,7 +290,7 @@ function renderSales() {
       <small class="sale-hint">${
         suggestions
           ? `Sugestão pelo histórico: ${suggestions[day.key].toLocaleString("pt-PT")}€`
-          : "Regista uma semana completa para ativar sugestão"
+          : "Registe uma semana completa para ativar sugestão"
       }</small>
     `;
     list.append(row);
@@ -283,6 +307,7 @@ function renderSales() {
     if (demandEl) demandEl.textContent = demandLabel(day.sales);
     renderMobileDaySelector();
     generateSchedule();
+    renderStatistics();
   };
 }
 
@@ -290,6 +315,7 @@ async function registerSalesWeek() {
   await saveSalesHistory();
   renderSales();
   generateSchedule();
+  renderStatistics();
 }
 
 function applySalesSuggestion() {
@@ -302,12 +328,7 @@ function applySalesSuggestion() {
   renderSales();
   renderMobileDaySelector();
   generateSchedule();
-}
-
-function toggleSalesPanel() {
-  const panel = document.querySelector("#sales");
-  const expanded = panel.classList.toggle("sales-collapsed") === false;
-  document.querySelector("#sales-toggle").setAttribute("aria-expanded", String(expanded));
+  renderStatistics();
 }
 
 async function loadEmployees() {
@@ -324,9 +345,10 @@ async function loadEmployees() {
       }));
       renderTeam();
       generateSchedule();
+      renderStatistics();
     }
   } catch (err) {
-    console.error("Failed to load employees:", err);
+    console.error("Erro ao carregar colaboradores:", err);
   }
 }
 
@@ -488,7 +510,7 @@ async function handleEmployeeFormSubmit(event) {
       alert("Erro ao guardar colaborador: " + (err.error || "Tente novamente"));
     }
   } catch (err) {
-    console.error("Failed to save employee:", err);
+    console.error("Erro ao guardar colaborador:", err);
   }
 }
 
@@ -511,8 +533,6 @@ function renderTeam() {
   const grid = document.querySelector("#team-grid");
   if (!grid) return;
   grid.innerHTML = "";
-  const teamCountEl = document.querySelector("#team-count");
-  if (teamCountEl) teamCountEl.textContent = employees.length;
 
   if (employees.length === 0) {
     grid.innerHTML = `
@@ -575,7 +595,6 @@ function renderTeam() {
   }
 }
 
-// Select employees calculating EXACT hours worked (not hardcoded 7.25h)
 function pickEmployees(dayKey, shift, required, openTime, closeTime) {
   const available = employees
     .filter((employee) => isEmployeeAvailable(employee, dayKey, shift, openTime, closeTime))
@@ -641,20 +660,16 @@ function generateSchedule() {
   let conflicts = 0;
   let totalRequired = 0;
   let totalAssigned = 0;
-  let totalAvailableSlots = 0;
 
   assignedHours.clear();
   grid.innerHTML = "";
 
-  // Set grid mode class
   grid.className = `schedule-grid mode-${currentViewMode}`;
 
-  // Filter days based on view mode
   const daysToRender = currentViewMode === "daily" 
     ? weekDays.filter(d => d.key === selectedDayKey) 
     : weekDays;
 
-  // Process all days for totals/stats
   weekDays.forEach((day) => {
     const dayRequired = baseDayRequired;
     const nightRequired = baseNightRequired;
@@ -666,11 +681,6 @@ function generateSchedule() {
     totalAssigned += (dayPeople.length + nightPeople.length);
     conflicts += Math.max(0, dayRequired - dayPeople.length);
     conflicts += Math.max(0, nightRequired - nightPeople.length);
-
-    employees.forEach((emp) => {
-      if (isEmployeeAvailable(emp, day.key, "day", openTime, closeTime)) totalAvailableSlots++;
-      if (isEmployeeAvailable(emp, day.key, "night", openTime, closeTime)) totalAvailableSlots++;
-    });
 
     if (daysToRender.some(d => d.key === day.key)) {
       const column = document.createElement("article");
@@ -692,35 +702,11 @@ function generateSchedule() {
     }
   });
 
-  // Dynamic Tile Updates
-  const conflictCountEl = document.querySelector("#conflict-count");
-  if (conflictCountEl) conflictCountEl.textContent = conflicts;
-
   const coverageStatusEl = document.querySelector("#coverage-status");
   if (coverageStatusEl) {
     coverageStatusEl.textContent =
       conflicts === 0 ? "Cobertura Completa" : `${conflicts} vaga${conflicts > 1 ? "s" : ""} por preencher`;
     coverageStatusEl.className = `status-badge ${conflicts === 0 ? "success" : "warning"}`;
-  }
-
-  const hoursStatEl = document.querySelector("#operation-hours-stat");
-  if (hoursStatEl) hoursStatEl.textContent = `${openTime}-${closeTime}`;
-
-  const salesStatEl = document.querySelector("#sales-stat");
-  if (salesStatEl) {
-    const avgSales = Math.round(weekDays.reduce((acc, d) => acc + (d.sales || 0), 0) / weekDays.length);
-    salesStatEl.textContent = `€${avgSales.toLocaleString("pt-PT")}`;
-  }
-
-  const coverageStatEl = document.querySelector("#coverage-stat");
-  if (coverageStatEl) {
-    coverageStatEl.textContent = `${totalAssigned}/${totalRequired}`;
-  }
-
-  const availabilityStatEl = document.querySelector("#availability-stat");
-  if (availabilityStatEl) {
-    const ratio = totalRequired > 0 ? Math.min(100, Math.round((totalAvailableSlots / totalRequired) * 100)) : 0;
-    availabilityStatEl.textContent = `${ratio}%`;
   }
 }
 
@@ -759,6 +745,91 @@ function renderShift(name, hours, people, required) {
   `;
 }
 
+// Render Statistics Dashboard Page
+function renderStatistics() {
+  const openTime = document.querySelector("#open-time")?.value || "08:30";
+  const closeTime = document.querySelector("#close-time")?.value || "23:00";
+  const dayReq = Number(document.querySelector("#day-required")?.value || 3);
+  const nightReq = Number(document.querySelector("#night-required")?.value || 3);
+
+  let conflicts = 0;
+  let totalRequired = (dayReq + nightReq) * 7;
+  let totalAssigned = 0;
+  let totalAvailableSlots = 0;
+  const roleHoursMap = { Sala: 0, Cozinha: 0, Bar: 0, Caixa: 0, Apoio: 0 };
+
+  // Recalculate full week assignment and role hours
+  assignedHours.clear();
+
+  weekDays.forEach((day) => {
+    const dayPeople = pickEmployees(day.key, "day", dayReq, openTime, closeTime);
+    const nightPeople = pickEmployees(day.key, "night", nightReq, openTime, closeTime);
+
+    totalAssigned += (dayPeople.length + nightPeople.length);
+    conflicts += Math.max(0, dayReq - dayPeople.length);
+    conflicts += Math.max(0, nightReq - nightPeople.length);
+
+    [...dayPeople, ...nightPeople].forEach((person) => {
+      const role = person.role || "Sala";
+      if (roleHoursMap[role] !== undefined) {
+        roleHoursMap[role] += (person.assignedDuration || 7);
+      }
+    });
+
+    employees.forEach((emp) => {
+      if (isEmployeeAvailable(emp, day.key, "day", openTime, closeTime)) totalAvailableSlots++;
+      if (isEmployeeAvailable(emp, day.key, "night", openTime, closeTime)) totalAvailableSlots++;
+    });
+  });
+
+  // Calculate ratio
+  const ratio = totalRequired > 0 ? Math.min(100, Math.round((totalAvailableSlots / totalRequired) * 100)) : 0;
+  const avgSales = Math.round(weekDays.reduce((acc, d) => acc + (d.sales || 0), 0) / weekDays.length);
+
+  // Set metric text content
+  const availabilityEl = document.querySelector("#stat-availability");
+  if (availabilityEl) availabilityEl.textContent = `${ratio}%`;
+
+  const salesEl = document.querySelector("#stat-sales-avg");
+  if (salesEl) salesEl.textContent = `€${avgSales.toLocaleString("pt-PT")}`;
+
+  const coverageEl = document.querySelector("#stat-coverage");
+  if (coverageEl) coverageEl.textContent = `${totalAssigned}/${totalRequired}`;
+
+  const teamEl = document.querySelector("#stat-team-count");
+  if (teamEl) teamEl.textContent = `${employees.length}`;
+
+  const conflictsEl = document.querySelector("#stat-conflicts");
+  if (conflictsEl) conflictsEl.textContent = `${conflicts}`;
+
+  const hoursEl = document.querySelector("#stat-hours");
+  if (hoursEl) hoursEl.textContent = `${openTime}-${closeTime}`;
+
+  // Render role hours list with progress bars
+  const roleList = document.querySelector("#role-hours-list");
+  if (roleList) {
+    roleList.innerHTML = "";
+    const totalRoleHours = Object.values(roleHoursMap).reduce((a, b) => a + b, 0) || 1;
+
+    Object.entries(roleHoursMap).forEach(([role, hours]) => {
+      const pct = Math.round((hours / totalRoleHours) * 100);
+      const badge = getRoleBadgeClass(role);
+      const row = document.createElement("div");
+      row.className = "role-stat-row";
+      row.innerHTML = `
+        <div class="role-stat-info">
+          <span class="role-badge ${badge}">${role}</span>
+          <strong>${hours.toFixed(1)}h (${pct}%)</strong>
+        </div>
+        <div class="role-stat-bar-bg">
+          <div class="role-stat-bar-fill" style="width: ${pct}%;"></div>
+        </div>
+      `;
+      roleList.appendChild(row);
+    });
+  }
+}
+
 // View Mode Toggle Handler
 document.querySelectorAll("#view-mode-toggle .view-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -775,12 +846,20 @@ document.querySelectorAll("#view-mode-toggle .view-btn").forEach((btn) => {
   });
 });
 
+// Dock Navigation Click Handler
+document.querySelectorAll(".dock-item").forEach((link) => {
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    const page = link.dataset.page || link.getAttribute("href");
+    switchPage(page);
+  });
+});
+
 // Event Listeners Setup
 document.querySelector("#generate-schedule")?.addEventListener("click", generateSchedule);
 document.querySelector("#add-employee")?.addEventListener("click", () => openEmployeeModal());
 document.querySelector("#save-sales-week")?.addEventListener("click", registerSalesWeek);
 document.querySelector("#apply-sales-suggestion")?.addEventListener("click", applySalesSuggestion);
-document.querySelector("#sales-toggle")?.addEventListener("click", toggleSalesPanel);
 document.querySelector("#login-form")?.addEventListener("submit", handleLogin);
 document.querySelector("#logout-button")?.addEventListener("click", logout);
 
@@ -788,18 +867,11 @@ document.querySelector("#modal-close")?.addEventListener("click", closeEmployeeM
 document.querySelector("#modal-cancel")?.addEventListener("click", closeEmployeeModal);
 document.querySelector("#employee-form")?.addEventListener("submit", handleEmployeeFormSubmit);
 
-// Rule input changes update schedule in real time
-document.querySelector("#open-time")?.addEventListener("input", generateSchedule);
-document.querySelector("#close-time")?.addEventListener("input", generateSchedule);
-document.querySelector("#day-required")?.addEventListener("input", generateSchedule);
-document.querySelector("#night-required")?.addEventListener("input", generateSchedule);
-
-document.querySelectorAll(".dock-item").forEach((link) => {
-  link.addEventListener("click", () => {
-    document.querySelectorAll(".dock-item").forEach((item) => item.classList.remove("active"));
-    link.classList.add("active");
-  });
-});
+// Rule input changes update schedule & stats in real time
+document.querySelector("#open-time")?.addEventListener("input", () => { generateSchedule(); renderStatistics(); });
+document.querySelector("#close-time")?.addEventListener("input", () => { generateSchedule(); renderStatistics(); });
+document.querySelector("#day-required")?.addEventListener("input", () => { generateSchedule(); renderStatistics(); });
+document.querySelector("#night-required")?.addEventListener("input", () => { generateSchedule(); renderStatistics(); });
 
 document.querySelector("#team-grid")?.addEventListener("click", async (event) => {
   const removeBtn = event.target.closest("[data-remove-employee]");
@@ -815,7 +887,7 @@ document.querySelector("#team-grid")?.addEventListener("click", async (event) =>
           await loadEmployees();
         }
       } catch (err) {
-        console.error("Failed to remove employee:", err);
+        console.error("Erro ao remover colaborador:", err);
       }
     }
     return;
@@ -833,7 +905,13 @@ document.querySelector("#team-grid")?.addEventListener("click", async (event) =>
 
 // App Initialization
 (async function init() {
-  // Sync day selector visibility with current mode
+  const hash = window.location.hash.replace("#", "");
+  if (hash) {
+    switchPage(hash);
+  } else {
+    switchPage("escala");
+  }
+
   const selectorBar = document.querySelector("#mobile-day-selector");
   if (selectorBar) {
     selectorBar.style.display = currentViewMode === "daily" ? "flex" : "none";

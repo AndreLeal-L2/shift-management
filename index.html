@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="pt">
+<html lang="pt-PT">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>RellenoShifts - Admin Scheduling System</title>
+    <title>RellenoShifts - Gestão de Escalas</title>
     <link rel="icon" href="https://cdn.prod.website-files.com/68f0d42a98b7319de2d5a54f/6923fde7e3002b9cae86adc4_relleno-favicon%20(2).png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -15,7 +15,7 @@
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   </head>
   <body>
-    <!-- Login Screen -->
+    <!-- Ecrã de Autenticação -->
     <section class="login-screen" id="login-screen" aria-labelledby="login-title">
       <form class="login-card" id="login-form">
         <div class="login-brand">
@@ -24,17 +24,17 @@
             alt="Relleno"
             class="relleno-login-logo"
           />
-          <p class="eyebrow">Admin access</p>
+          <p class="eyebrow">Acesso Reservado</p>
         </div>
         <h1 id="login-title">RellenoShifts</h1>
 
         <label>
-          Email
-          <input id="login-email" type="email" autocomplete="email" placeholder="admin@relleno.pt" value="" required />
+          Correio Eletrónico
+          <input id="login-email" type="email" autocomplete="email" placeholder="gestao@relleno.pt" value="" required />
         </label>
         
         <label>
-          Password
+          Palavra-passe
           <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" value="" required />
         </label>
         
@@ -46,94 +46,65 @@
       </form>
     </section>
 
-    <!-- App Shell -->
+    <!-- Estrutura Principal da Aplicação -->
     <main class="app-shell">
       <header class="topbar">
-        <a class="brand" href="#schedule" aria-label="RellenoShifts">
-          <img
-            src="https://cdn.prod.website-files.com/68f0d42a98b7319de2d5a54f/68fc41247fa9b572888d83dd_Relleno_Logotipo_Digital_White.svg"
-            alt="Relleno"
-            class="relleno-brand-logo"
-          />
-          <span class="brand-badge">SHIFTS</span>
-        </a>
-        <button class="secondary-action logout-action" id="logout-button" type="button">
-          <i data-lucide="log-out"></i>
-          Sair
-        </button>
+        <div class="topbar-right">
+          <button class="secondary-action logout-action" id="logout-button" type="button">
+            <i data-lucide="log-out"></i>
+            Terminar Sessão
+          </button>
+        </div>
       </header>
 
+      <!-- Apresentação Central -->
       <section class="stage" aria-labelledby="page-title">
         <div class="hero-copy">
           <div class="hero-logo-container">
             <img
               src="https://cdn.prod.website-files.com/68f0d42a98b7319de2d5a54f/68fc41247fa9b572888d83dd_Relleno_Logotipo_Digital_White.svg"
-              alt="Relleno Logo"
+              alt="Logótipo Relleno"
               class="hero-logo-large"
             />
             <span class="hero-logo-tag">SHIFTS</span>
           </div>
-          <p class="eyebrow">Admin scheduling system</p>
+          <p class="eyebrow">Sistema de Gestão de Escalas</p>
           <p>
-            Planeia turnos, cruza disponibilidade da equipa e ajusta a escala conforme vendas previstas.
+            Planeie turnos, cruze a disponibilidade da equipa e otimize escalas conforme a previsão de vendas.
           </p>
-        </div>
-
-        <!-- Metric Tiles (conrelleno floating tiles aesthetic) -->
-        <div class="metrics-container" id="metrics-container">
-          <div class="floating-tile tile-availability">
-            <span>Disponibilidade</span>
-            <strong id="availability-stat">0%</strong>
-          </div>
-          <div class="floating-tile tile-sales">
-            <span>Venda média</span>
-            <strong id="sales-stat">€0</strong>
-          </div>
-          <div class="floating-tile tile-coverage">
-            <span>Cobertura</span>
-            <strong id="coverage-stat">0/0</strong>
-          </div>
-          <div class="floating-tile tile-team">
-            <span>Equipa ativa</span>
-            <strong id="team-count">0</strong>
-          </div>
-          <div class="floating-tile tile-alert">
-            <span>Conflitos</span>
-            <strong id="conflict-count">0</strong>
-          </div>
-          <div class="floating-tile tile-hours">
-            <span>Operação</span>
-            <strong id="operation-hours-stat">08:30-23:00</strong>
-          </div>
         </div>
       </section>
 
-      <!-- Navigation Dock -->
+      <!-- Dock de Navegação (5 Páginas Dedicadas) -->
       <nav class="dock" aria-label="Navegação principal">
-        <a class="active" href="#schedule">
+        <a class="dock-item active" data-page="escala" href="#escala">
           <i data-lucide="calendar-days"></i>
-          Escala
+          <span>Escala</span>
         </a>
-        <a href="#team">
+        <a class="dock-item" data-page="equipa" href="#equipa">
           <i data-lucide="users"></i>
-          Equipa
+          <span>Equipa</span>
         </a>
-        <a href="#rules">
+        <a class="dock-item" data-page="regras" href="#regras">
           <i data-lucide="sliders-horizontal"></i>
-          Regras
+          <span>Regras</span>
         </a>
-        <a href="#sales">
+        <a class="dock-item" data-page="vendas" href="#vendas">
           <i data-lucide="chart-no-axes-combined"></i>
-          Vendas
+          <span>Vendas</span>
+        </a>
+        <a class="dock-item" data-page="estatisticas" href="#estatisticas">
+          <i data-lucide="bar-chart-3"></i>
+          <span>Estatísticas</span>
         </a>
       </nav>
 
-      <!-- Schedule Section -->
-      <section class="workspace" id="schedule">
+      <!-- PÁGINA 1: ESCALA DE TURNOS -->
+      <section class="page-section active" id="page-escala">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Semana atual</p>
-            <h2>Gerador de horários</h2>
+            <p class="eyebrow">Semana Atual</p>
+            <h2>Escala de Turnos</h2>
           </div>
           
           <div class="schedule-actions-bar">
@@ -144,92 +115,180 @@
 
             <button class="primary-action" id="generate-schedule" type="button">
               <i data-lucide="wand-sparkles"></i>
-              Gerar melhor escala
+              Gerar Melhor Escala
             </button>
           </div>
         </div>
 
-        <!-- Mobile Day Selector Bar -->
+        <!-- Seletor de Dia no Telemóvel -->
         <div class="day-selector-bar" id="mobile-day-selector"></div>
 
-        <div class="layout-grid">
-          <section class="panel schedule-panel" aria-label="Escala semanal gerada">
-            <div class="panel-heading">
-              <h3>Escala sugerida</h3>
-              <span id="coverage-status">Pronta para gerar</span>
-            </div>
-            <div class="schedule-grid mode-daily" id="schedule-grid"></div>
-          </section>
-
-          <aside class="stack">
-            <section class="panel" id="rules">
-              <div class="panel-heading">
-                <h3>Regras base</h3>
-                <span>Loja</span>
-              </div>
-              <div class="rule-list">
-                <label>
-                  Abertura
-                  <input id="open-time" type="time" value="08:30" />
-                </label>
-                <label>
-                  Fecho
-                  <input id="close-time" type="time" value="23:00" />
-                </label>
-                <label>
-                  Colaboradores dia
-                  <input id="day-required" type="number" min="1" max="15" value="3" />
-                </label>
-                <label>
-                  Colaboradores noite
-                  <input id="night-required" type="number" min="1" max="15" value="3" />
-                </label>
-              </div>
-            </section>
-
-            <section class="panel sales-collapsed" id="sales">
-              <button class="panel-heading panel-toggle" id="sales-toggle" type="button" aria-expanded="false">
-                <h3>Média de vendas</h3>
-                <span>
-                  <span id="sales-history-status">Sem histórico</span>
-                  <i data-lucide="chevron-down"></i>
-                </span>
-              </button>
-              <div class="sales-content" id="sales-content">
-                <div class="sales-list" id="sales-list"></div>
-                <div class="sales-actions">
-                  <button class="secondary-action compact-action" id="save-sales-week" type="button">
-                    <i data-lucide="save"></i>
-                    Registar semana
-                  </button>
-                  <button class="secondary-action compact-action" id="apply-sales-suggestion" type="button" disabled>
-                    <i data-lucide="history"></i>
-                    Aplicar sugestão
-                  </button>
-                </div>
-              </div>
-            </section>
-          </aside>
-        </div>
+        <section class="panel schedule-panel" aria-label="Escala sugerida">
+          <div class="panel-heading">
+            <h3>Escala Sugerida</h3>
+            <span id="coverage-status">Pronta para gerar</span>
+          </div>
+          <div class="schedule-grid mode-daily" id="schedule-grid"></div>
+        </section>
       </section>
 
-      <!-- Team Section -->
-      <section class="workspace compact" id="team">
+      <!-- PÁGINA 2: GESTÃO DA EQUIPA -->
+      <section class="page-section" id="page-equipa">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Perfis</p>
-            <h2>Colaboradores</h2>
+            <p class="eyebrow">Colaboradores</p>
+            <h2>Gestão da Equipa</h2>
           </div>
-          <button class="secondary-action" id="add-employee" type="button">
+          <button class="primary-action" id="add-employee" type="button">
             <i data-lucide="user-plus"></i>
-            Adicionar
+            Adicionar Colaborador
           </button>
         </div>
         <div class="team-grid" id="team-grid"></div>
       </section>
+
+      <!-- PÁGINA 3: REGRAS DE LOJA -->
+      <section class="page-section" id="page-regras">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Configuração</p>
+            <h2>Regras de Operação</h2>
+          </div>
+        </div>
+
+        <section class="panel" id="rules">
+          <div class="panel-heading">
+            <h3>Parâmetros da Loja</h3>
+            <span>Ativos</span>
+          </div>
+          <div class="rule-list">
+            <label>
+              Abertura da Loja
+              <input id="open-time" type="time" value="08:30" />
+            </label>
+            <label>
+              Fecho da Loja
+              <input id="close-time" type="time" value="23:00" />
+            </label>
+            <label>
+              Colaboradores no Turno de Dia
+              <input id="day-required" type="number" min="1" max="15" value="3" />
+            </label>
+            <label>
+              Colaboradores no Turno de Noite
+              <input id="night-required" type="number" min="1" max="15" value="3" />
+            </label>
+          </div>
+        </section>
+      </section>
+
+      <!-- PÁGINA 4: HISTÓRICO DE VENDAS -->
+      <section class="page-section" id="page-vendas">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Previsão e Histórico</p>
+            <h2>Volume de Vendas</h2>
+          </div>
+        </div>
+
+        <section class="panel" id="sales">
+          <div class="panel-heading">
+            <h3>Média de Vendas por Dia</h3>
+            <span id="sales-history-status">Sem histórico</span>
+          </div>
+          <div class="sales-content" id="sales-content">
+            <div class="sales-list" id="sales-list"></div>
+            <div class="sales-actions">
+              <button class="secondary-action" id="save-sales-week" type="button">
+                <i data-lucide="save"></i>
+                Registar Semana
+              </button>
+              <button class="secondary-action" id="apply-sales-suggestion" type="button" disabled>
+                <i data-lucide="history"></i>
+                Aplicar Sugestão pelo Histórico
+              </button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <!-- PÁGINA 5: ESTATÍSTICAS E MÉTRICAS DA LOJA -->
+      <section class="page-section" id="page-estatisticas">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Painel Analítico</p>
+            <h2>Estatísticas & Métricas</h2>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon"><i data-lucide="percent"></i></div>
+            <div class="stat-info">
+              <span>Disponibilidade Geral</span>
+              <strong id="stat-availability">0%</strong>
+              <small>Capacidade da equipa vs requisitos</small>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon"><i data-lucide="euro"></i></div>
+            <div class="stat-info">
+              <span>Venda Média Diária</span>
+              <strong id="stat-sales-avg">€0</strong>
+              <small>Previsão semanal calculada</small>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon"><i data-lucide="check-circle-2"></i></div>
+            <div class="stat-info">
+              <span>Taxa de Cobertura</span>
+              <strong id="stat-coverage">0/0</strong>
+              <small>Vagas preenchidas na escala</small>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon"><i data-lucide="users"></i></div>
+            <div class="stat-info">
+              <span>Equipa Ativa</span>
+              <strong id="stat-team-count">0</strong>
+              <small>Colaboradores registados</small>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon"><i data-lucide="alert-triangle"></i></div>
+            <div class="stat-info">
+              <span>Vagas por Preencher</span>
+              <strong id="stat-conflicts">0</strong>
+              <small>Falta de cobertura por turno</small>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon"><i data-lucide="clock"></i></div>
+            <div class="stat-info">
+              <span>Horário de Operação</span>
+              <strong id="stat-hours">08:30-23:00</strong>
+              <small>Funcionamento da loja</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- Breakdown de Horas por Cargo -->
+        <section class="panel stats-breakdown-panel">
+          <div class="panel-heading">
+            <h3>Horas Atribuídas por Cargo</h3>
+            <span>Esta semana</span>
+          </div>
+          <div class="role-hours-list" id="role-hours-list"></div>
+        </section>
+      </section>
     </main>
 
-    <!-- Employee Modal -->
+    <!-- Modal de Criar/Editar Colaborador -->
     <div class="modal-backdrop" id="employee-modal" aria-hidden="true">
       <div class="modal-card" role="dialog" aria-labelledby="modal-title">
         <div class="modal-header">
@@ -242,11 +301,11 @@
           <input type="hidden" id="emp-id" value="" />
           <div class="form-row">
             <label>
-              Nome
+              Nome Completo
               <input type="text" id="emp-name" required placeholder="Ex: Maria Santos" />
             </label>
             <label>
-              Cargo
+              Cargo / Função
               <select id="emp-role" required>
                 <option value="Sala">Sala</option>
                 <option value="Cozinha">Cozinha</option>
@@ -258,7 +317,7 @@
           </div>
           <div class="form-row">
             <label>
-              Horas Máx / Semana
+              Horas Máximas por Semana
               <input type="number" id="emp-max-hours" min="1" max="60" value="40" required />
             </label>
           </div>
@@ -270,7 +329,7 @@
 
           <div class="modal-actions">
             <button type="button" class="secondary-action" id="modal-cancel">Cancelar</button>
-            <button type="submit" class="primary-action" id="modal-save">Guardar</button>
+            <button type="submit" class="primary-action" id="modal-save">Guardar Colaborador</button>
           </div>
         </form>
       </div>
