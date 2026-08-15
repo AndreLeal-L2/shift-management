@@ -688,13 +688,68 @@ function generateSchedule() {
     ? weekDays.filter(d => d.key === selectedDayKey) 
     : weekDays;
 
+  // Criar lista de todas as vagas da semana
+  const allSlots = [];
   weekDays.forEach((day) => {
     const dayRequired = baseDayRequired;
     const nightRequired = baseNightRequired;
     totalRequired += (dayRequired + nightRequired);
 
-    const dayPeople = pickEmployees(day.key, "day", dayRequired, openTime, closeTime);
-    const nightPeople = pickEmployees(day.key, "night", nightRequired, openTime, closeTime);
+    // Adicionar vagas de dia
+    for (let i = 0; i < dayRequired; i++) {
+      allSlots.push({ day: day.key, shift: "day", priority: day.sales });
+    }
+    // Adicionar vagas de noite
+    for (let i = 0; i < nightRequired; i++) {
+      allSlots.push({ day: day.key, shift: "night", priority: day.sales });
+    }
+  });
+
+  // Ordenar vagas por prioridade (dias com mais vendas primeiro)
+  allSlots.sort((a, b) => b.priority - a.priority);
+
+  // Preencher vagas de forma global
+  const schedule = {};
+  weekDays.forEach(day => {
+    schedule[day.key] = { day: [], night: [] };
+  });
+
+  for (const slot of allSlots) {
+    const available = employees
+      .filter((employee) => isEmployeeAvailable(employee, slot.day, slot.shift, openTime, closeTime))
+      .sort((a, b) => {
+        const hoursA = assignedHours.get(a.name) || 0;
+        const hoursB = assignedHours.get(b.name) || 0;
+        const remainingA = a.maxHours - hoursA;
+        const remainingB = b.maxHours - hoursB;
+        
+        if (remainingA !== remainingB) return remainingB - remainingA;
+        return hoursA - hoursB;
+      });
+
+    for (const employee of available) {
+      const currentHours = assignedHours.get(employee.name) || 0;
+      const details = getEmployeeShiftDetails(employee, slot.day, slot.shift, openTime, closeTime);
+      const duration = details.duration;
+
+      if (currentHours + duration <= employee.maxHours) {
+        schedule[slot.day][slot.shift].push({
+          ...employee,
+          assignedHoursText: details.display,
+          assignedDuration: duration
+        });
+        assignedHours.set(employee.name, currentHours + duration);
+        break;
+      }
+    }
+  }
+
+  // Renderizar a escala
+  weekDays.forEach((day) => {
+    const dayRequired = baseDayRequired;
+    const nightRequired = baseNightRequired;
+    const dayPeople = schedule[day.key].day;
+    const nightPeople = schedule[day.key].night;
 
     totalAssigned += (dayPeople.length + nightPeople.length);
     conflicts += Math.max(0, dayRequired - dayPeople.length);
