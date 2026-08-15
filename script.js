@@ -19,6 +19,10 @@ const sessionKey = "rellenoShiftsSession";
 const API_BASE = "/api";
 let authToken = localStorage.getItem(sessionKey);
 
+// State for mobile view and active day
+let currentViewMode = window.innerWidth <= 760 ? "daily" : "weekly";
+let selectedDayKey = "seg";
+
 async function getSessionToken() {
   if (!supabaseClient) return null;
   const { data } = await supabaseClient.auth.getSession();
@@ -98,6 +102,15 @@ function shiftHours(shift, openTime, closeTime) {
   return shift === "day" ? `${openTime}-16:00` : `16:00-${closeTime}`;
 }
 
+function getRoleBadgeClass(role) {
+  const r = (role || "").toLowerCase();
+  if (r.includes("sala")) return "badge-sala";
+  if (r.includes("cozinha")) return "badge-cozinha";
+  if (r.includes("bar")) return "badge-bar";
+  if (r.includes("caixa")) return "badge-caixa";
+  return "badge-apoio";
+}
+
 async function loadSalesHistory() {
   try {
     const response = await apiFetch("/sales");
@@ -114,6 +127,7 @@ async function loadSalesHistory() {
         }
       }
       renderSales();
+      renderMobileDaySelector();
       generateSchedule();
     }
   } catch (err) {
@@ -201,6 +215,7 @@ function renderSales() {
     day.sales = Number(input.value || 0);
     const demandEl = input.nextElementSibling;
     if (demandEl) demandEl.textContent = demandLabel(day.sales);
+    renderMobileDaySelector();
     generateSchedule();
   };
 }
@@ -219,6 +234,7 @@ function applySalesSuggestion() {
     day.sales = suggestions[day.key];
   });
   renderSales();
+  renderMobileDaySelector();
   generateSchedule();
 }
 
@@ -392,13 +408,18 @@ function renderTeam() {
       .map((day) => `<span>${day.label.slice(0, 3)}</span>`)
       .join("");
 
+    const roleBadge = getRoleBadgeClass(employee.role);
+
     card.innerHTML = `
       <div class="member-top">
         <div class="member-info">
           <div class="avatar">${employee.name.slice(0, 1).toUpperCase()}</div>
           <div>
             <strong>${employee.name}</strong>
-            <small>${employee.role} · ${employee.maxHours}h/sem</small>
+            <div class="role-group">
+              <span class="role-badge ${roleBadge}">${employee.role}</span>
+              <small>${employee.maxHours}h/sem</small>
+            </div>
           </div>
         </div>
         <div class="member-actions">
@@ -438,6 +459,29 @@ function pickEmployees(dayKey, shift, required) {
   return selected;
 }
 
+function renderMobileDaySelector() {
+  const bar = document.querySelector("#mobile-day-selector");
+  if (!bar) return;
+
+  bar.innerHTML = "";
+  weekDays.forEach((day) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `day-tab ${day.key === selectedDayKey ? "active" : ""}`;
+    btn.dataset.day = day.key;
+    btn.innerHTML = `
+      <span class="day-tab-name">${day.label.slice(0, 3)}</span>
+      <span class="day-tab-val">${day.sales ? `${day.sales}€` : "-"}</span>
+    `;
+    btn.onclick = () => {
+      selectedDayKey = day.key;
+      renderMobileDaySelector();
+      generateSchedule();
+    };
+    bar.appendChild(btn);
+  });
+}
+
 function generateSchedule() {
   const grid = document.querySelector("#schedule-grid");
   if (!grid) return;
@@ -460,8 +504,16 @@ function generateSchedule() {
   assignedHours.clear();
   grid.innerHTML = "";
 
+  // Set grid mode class
+  grid.className = `schedule-grid mode-${currentViewMode}`;
+
+  // Filter days based on view mode
+  const daysToRender = currentViewMode === "daily" 
+    ? weekDays.filter(d => d.key === selectedDayKey) 
+    : weekDays;
+
+  // Process all days for totals/stats
   weekDays.forEach((day) => {
-    const salesDemand = demandLabel(day.sales);
     const dayRequired = baseDayRequired;
     const nightRequired = baseNightRequired;
     totalRequired += (dayRequired + nightRequired);
@@ -473,23 +525,29 @@ function generateSchedule() {
     conflicts += Math.max(0, dayRequired - dayPeople.length);
     conflicts += Math.max(0, nightRequired - nightPeople.length);
 
-    // Count available slots for day slot availability metric
     employees.forEach((emp) => {
       if (emp.availability?.[day.key]?.includes("day")) totalAvailableSlots++;
       if (emp.availability?.[day.key]?.includes("night")) totalAvailableSlots++;
     });
 
-    const column = document.createElement("article");
-    column.className = "day-column";
-    column.innerHTML = `
-      <div class="day-head">
-        <strong>${day.label}</strong>
-        <span>${day.sales.toLocaleString("pt-PT")}€ · ${salesDemand}</span>
-      </div>
-      ${renderShift("Dia", shiftHours("day", openTime, closeTime), dayPeople, dayRequired)}
-      ${renderShift("Noite", shiftHours("night", openTime, closeTime), nightPeople, nightRequired)}
-    `;
-    grid.append(column);
+    if (daysToRender.some(d => d.key === day.key)) {
+      const column = document.createElement("article");
+      column.className = `day-column ${day.key === selectedDayKey ? "selected" : ""}`;
+      const salesDemand = demandLabel(day.sales);
+
+      column.innerHTML = `
+        <div class="day-head">
+          <div class="day-head-main">
+            <strong>${day.label}</strong>
+            <span class="demand-pill ${salesDemand.toLowerCase()}">${salesDemand}</span>
+          </div>
+          <span class="day-sales-sub">${day.sales.toLocaleString("pt-PT")}€ previstos</span>
+        </div>
+        ${renderShift("Turno Dia", shiftHours("day", openTime, closeTime), dayPeople, dayRequired)}
+        ${renderShift("Turno Noite", shiftHours("night", openTime, closeTime), nightPeople, nightRequired)}
+      `;
+      grid.append(column);
+    }
   });
 
   // Dynamic Tile Updates
@@ -499,7 +557,8 @@ function generateSchedule() {
   const coverageStatusEl = document.querySelector("#coverage-status");
   if (coverageStatusEl) {
     coverageStatusEl.textContent =
-      conflicts === 0 ? "Cobertura completa" : `${conflicts} vagas por preencher`;
+      conflicts === 0 ? "Cobertura Completa" : `${conflicts} vaga${conflicts > 1 ? "s" : ""} por preencher`;
+    coverageStatusEl.className = `status-badge ${conflicts === 0 ? "success" : "warning"}`;
   }
 
   const hoursStatEl = document.querySelector("#operation-hours-stat");
@@ -525,22 +584,50 @@ function generateSchedule() {
 
 function renderShift(name, hours, people, required) {
   const chips = people
-    .map((person) => `<div class="person-chip">${person.name}</div>`)
+    .map((person) => {
+      const badge = getRoleBadgeClass(person.role);
+      return `
+        <div class="person-chip">
+          <span class="chip-avatar">${person.name.slice(0, 1).toUpperCase()}</span>
+          <span class="chip-name">${person.name}</span>
+          <span class="chip-role ${badge}">${person.role}</span>
+        </div>
+      `;
+    })
     .join("");
+    
   const missing = Array.from({ length: Math.max(0, required - people.length) })
-    .map(() => `<div class="person-chip missing">Por preencher</div>`)
+    .map(() => `<div class="person-chip missing"><i data-lucide="user-minus"></i> Por preencher</div>`)
     .join("");
 
   return `
     <div class="shift">
       <div class="shift-title">
         <span>${name}</span>
-        <span>${hours} · ${required}</span>
+        <span>${hours} · ${people.length}/${required}</span>
       </div>
-      ${chips}${missing}
+      <div class="shift-chips-list">
+        ${chips}${missing}
+      </div>
     </div>
   `;
 }
+
+// View Mode Toggle Handler
+document.querySelectorAll("#view-mode-toggle .view-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#view-mode-toggle .view-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentViewMode = btn.dataset.view;
+    
+    const selectorBar = document.querySelector("#mobile-day-selector");
+    if (selectorBar) {
+      selectorBar.style.display = currentViewMode === "daily" ? "flex" : "none";
+    }
+    
+    generateSchedule();
+  });
+});
 
 // Event Listeners Setup
 document.querySelector("#generate-schedule")?.addEventListener("click", generateSchedule);
@@ -561,9 +648,9 @@ document.querySelector("#close-time")?.addEventListener("input", generateSchedul
 document.querySelector("#day-required")?.addEventListener("input", generateSchedule);
 document.querySelector("#night-required")?.addEventListener("input", generateSchedule);
 
-document.querySelectorAll(".dock a").forEach((link) => {
+document.querySelectorAll(".dock-item").forEach((link) => {
   link.addEventListener("click", () => {
-    document.querySelectorAll(".dock a").forEach((item) => item.classList.remove("active"));
+    document.querySelectorAll(".dock-item").forEach((item) => item.classList.remove("active"));
     link.classList.add("active");
   });
 });
@@ -600,8 +687,15 @@ document.querySelector("#team-grid")?.addEventListener("click", async (event) =>
 
 // App Initialization
 (async function init() {
+  // Sync day selector visibility with current mode
+  const selectorBar = document.querySelector("#mobile-day-selector");
+  if (selectorBar) {
+    selectorBar.style.display = currentViewMode === "daily" ? "flex" : "none";
+  }
+
   renderSales();
   renderTeam();
+  renderMobileDaySelector();
   generateSchedule();
   await updateAuthView();
 
