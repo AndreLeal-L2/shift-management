@@ -609,7 +609,7 @@ function pickEmployees(dayKey, shift, required, openTime, closeTime) {
     const details = getEmployeeShiftDetails(employee, dayKey, shift, openTime, closeTime);
     const duration = details.duration;
 
-    if (currentHours + duration <= employee.maxHours && selected.length < required) {
+    if (currentHours + duration <= employee.maxHours) {
       selected.push({
         ...employee,
         assignedHoursText: details.display,
@@ -706,9 +706,13 @@ function generateSchedule() {
 
   const coverageStatusEl = document.querySelector("#coverage-status");
   if (coverageStatusEl) {
-    coverageStatusEl.textContent =
-      conflicts === 0 ? "Cobertura Completa" : `${conflicts} vaga${conflicts > 1 ? "s" : ""} por preencher`;
-    coverageStatusEl.className = `status-badge ${conflicts === 0 ? "success" : "warning"}`;
+    if (conflicts === 0) {
+      coverageStatusEl.textContent = "Cobertura Completa";
+      coverageStatusEl.className = "status-badge success";
+    } else {
+      coverageStatusEl.textContent = `Não foi possível ter 3 pessoas em ${conflicts} turno${conflicts > 1 ? "s" : ""} - Distribuição otimizada com equipa disponível`;
+      coverageStatusEl.className = "status-badge warning";
+    }
   }
 }
 
