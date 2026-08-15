@@ -377,6 +377,22 @@ i[data-lucide] {
   margin-bottom: 0;
 }
 
+/* Page Sections (Multi-page navigation) */
+.page-section {
+  display: none;
+  width: 100%;
+  animation: fadeIn 300ms ease;
+}
+
+.page-section.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .section-heading {
   display: flex;
   align-items: flex-end;
@@ -978,6 +994,122 @@ input:focus, select:focus {
   width: 38px;
   height: 38px;
   opacity: 0.6;
+}
+
+/* Statistics Dashboard */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  background: var(--panel);
+}
+
+.stat-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--white);
+}
+
+.stat-icon i {
+  width: 22px;
+  height: 22px;
+}
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-info span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.stat-info strong {
+  font-size: 1.8rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.stat-info small {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.stats-breakdown-panel {
+  margin-top: 24px;
+}
+
+.role-hours-list {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.role-stat-row {
+  display: grid;
+  gap: 10px;
+}
+
+.role-stat-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.role-stat-bar-bg {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.role-stat-bar-fill {
+  height: 100%;
+  background: var(--white);
+  border-radius: 999px;
+  transition: width 500ms ease;
+}
+
+.status-badge {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.status-badge.success {
+  background: rgba(155, 255, 203, 0.15);
+  color: var(--green);
+  border: 1px solid rgba(155, 255, 203, 0.3);
+}
+
+.status-badge.warning {
+  background: rgba(255, 217, 143, 0.15);
+  color: var(--amber);
+  border: 1px solid rgba(255, 217, 143, 0.3);
 }
 
 /* Login Card */
