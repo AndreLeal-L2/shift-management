@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RellenoShifts</title>
+    <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section class="login-screen" id="login-screen" aria-labelledby="login-title">
+      <form class="login-card" id="login-form">
+        <p class="eyebrow">Admin access</p>
+        <h1 id="login-title">RellenoShifts</h1>
+        <label>
+          Email
+          <input id="login-email" type="email" autocomplete="email" value="admin@relleno.pt" required />
+        </label>
+        <label>
+          Password
+          <input id="login-password" type="password" autocomplete="current-password" value="admin123" required />
+        </label>
+        <p class="login-error" id="login-error" role="alert"></p>
+        <button class="primary-action login-submit" type="submit">
+          <i data-lucide="log-in"></i>
+          Entrar
+        </button>
+      </form>
+    </section>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#schedule" aria-label="RellenoShifts">RellenoShifts</a>
+        <button class="secondary-action logout-action" id="logout-button" type="button">
+          <i data-lucide="log-out"></i>
+          Sair
+        </button>
+      </header>
+
+      <section class="stage" aria-labelledby="page-title">
+        <div class="floating-tile tile-left tile-availability">
+          <span>Disponibilidade</span>
+          <strong>87%</strong>
+        </div>
+        <div class="floating-tile tile-left-mid tile-sales">
+          <span>Venda média</span>
+          <strong>€1.840</strong>
+        </div>
+        <div class="floating-tile tile-left-low tile-coverage">
+          <span>Cobertura</span>
+          <strong>6/6</strong>
+        </div>
+        <div class="floating-tile tile-right tile-team">
+          <span>Equipa ativa</span>
+          <strong id="team-count">10</strong>
+        </div>
+        <div class="floating-tile tile-right-mid tile-alert">
+          <span>Conflitos</span>
+          <strong id="conflict-count">0</strong>
+        </div>
+        <div class="floating-tile tile-right-low tile-hours">
+          <span>Operação</span>
+          <strong>08:30-23:00</strong>
+        </div>
+
+        <div class="hero-copy">
+          <p class="eyebrow">Admin scheduling system</p>
+          <h1 id="page-title">RellenoShifts</h1>
+          <p>
+            Planeia turnos, cruza disponibilidade da equipa e ajusta a escala
+            conforme vendas previstas.
+          </p>
+        </div>
+      </section>
+
+      <nav class="dock" aria-label="Navegação principal">
+        <a class="active" href="#schedule">
+          <i data-lucide="calendar-days"></i>
+          Escala
+        </a>
+        <a href="#team">
+          <i data-lucide="users"></i>
+          Equipa
+        </a>
+        <a href="#rules">
+          <i data-lucide="sliders-horizontal"></i>
+          Regras
+        </a>
+        <a href="#sales">
+          <i data-lucide="chart-no-axes-combined"></i>
+          Vendas
+        </a>
+      </nav>
+
+      <section class="workspace" id="schedule">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Semana atual</p>
+            <h2>Gerador de horários</h2>
+          </div>
+          <button class="primary-action" id="generate-schedule" type="button">
+            <i data-lucide="wand-sparkles"></i>
+            Gerar melhor escala
+          </button>
+        </div>
+
+        <div class="layout-grid">
+          <section class="panel schedule-panel" aria-label="Escala semanal gerada">
+            <div class="panel-heading">
+              <h3>Escala sugerida</h3>
+              <span id="coverage-status">Pronta para gerar</span>
+            </div>
+            <div class="schedule-grid" id="schedule-grid"></div>
+          </section>
+
+          <aside class="stack">
+            <section class="panel" id="rules">
+              <div class="panel-heading">
+                <h3>Regras base</h3>
+                <span>Loja</span>
+              </div>
+              <div class="rule-list">
+                <label>
+                  Abertura
+                  <input id="open-time" type="time" value="08:30" />
+                </label>
+                <label>
+                  Fecho
+                  <input id="close-time" type="time" value="23:00" />
+                </label>
+                <label>
+                  Colaboradores dia
+                  <input id="day-required" type="number" min="1" max="9" value="3" />
+                </label>
+                <label>
+                  Colaboradores noite
+                  <input id="night-required" type="number" min="1" max="9" value="3" />
+                </label>
+              </div>
+            </section>
+
+            <section class="panel sales-collapsed" id="sales">
+              <button class="panel-heading panel-toggle" id="sales-toggle" type="button" aria-expanded="false">
+                <h3>Média de vendas</h3>
+                <span>
+                  <span id="sales-history-status">Sem histórico</span>
+                  <i data-lucide="chevron-down"></i>
+                </span>
+              </button>
+              <div class="sales-content" id="sales-content">
+                <div class="sales-list" id="sales-list"></div>
+                <div class="sales-actions">
+                  <button class="secondary-action compact-action" id="save-sales-week" type="button">
+                    <i data-lucide="save"></i>
+                    Registar semana
+                  </button>
+                  <button class="secondary-action compact-action" id="apply-sales-suggestion" type="button" disabled>
+                    <i data-lucide="history"></i>
+                    Aplicar sugestão
+                  </button>
+                </div>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section class="workspace compact" id="team">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Perfis</p>
+            <h2>Colaboradores</h2>
+          </div>
+          <button class="secondary-action" id="add-employee" type="button">
+            <i data-lucide="user-plus"></i>
+            Adicionar
+          </button>
+        </div>
+        <div class="team-grid" id="team-grid"></div>
+      </section>
+    </main>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="./script.js"></script>
+  </body>
+</html>

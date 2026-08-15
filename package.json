@@ -1,0 +1,14 @@
+{
+  "name": "relleno-shifts",
+  "version": "1.0.0",
+  "description": "Employee scheduling system",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "devDependencies": {
+    "vercel": "^59.1.3"
+  }
+}
