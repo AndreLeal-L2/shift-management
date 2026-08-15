@@ -600,7 +600,23 @@ function renderTeam() {
 function pickEmployees(dayKey, shift, required, openTime, closeTime) {
   const available = employees
     .filter((employee) => isEmployeeAvailable(employee, dayKey, shift, openTime, closeTime))
-    .sort((a, b) => (assignedHours.get(a.name) || 0) - (assignedHours.get(b.name) || 0));
+    .sort((a, b) => {
+      // Priorizar colaboradores com menos horas atribuídas
+      const hoursA = assignedHours.get(a.name) || 0;
+      const hoursB = assignedHours.get(b.name) || 0;
+      
+      // Se um está muito mais perto do limite, dar prioridade ao outro
+      const remainingA = a.maxHours - hoursA;
+      const remainingB = b.maxHours - hoursB;
+      
+      // Primeiro, ordenar por quem tem mais horas disponíveis
+      if (remainingA !== remainingB) {
+        return remainingB - remainingA;
+      }
+      
+      // Depois, por quem tem menos horas atribuídas
+      return hoursA - hoursB;
+    });
 
   const selected = [];
 
