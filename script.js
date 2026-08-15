@@ -1,3 +1,7 @@
+const supabaseUrl = 'https://zebcriljgnwvlpgygrib.supabase.co';
+const supabaseKey = 'sb_publishable_UFL7ezhY0JNI0piyKqBg1w_sBajjfJS';
+const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
 const weekDays = [
   { key: "seg", label: "Segunda", sales: 900 },
   { key: "ter", label: "Terça", sales: 850 },
@@ -162,8 +166,9 @@ const API_BASE = "/api";
 let salesHistory = [];
 let authToken = localStorage.getItem(sessionKey);
 
-function isLoggedIn() {
-  return !!authToken;
+async function isLoggedIn() {
+  const { data } = await supabase.auth.getSession();
+  return !!data.session;
 }
 
 function updateAuthView() {
@@ -176,37 +181,26 @@ async function handleLogin(event) {
   const password = document.querySelector("#login-password").value;
   const error = document.querySelector("#login-error");
 
-  try {
-    const response = await fetch(`${API_BASE}/auth`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+  const { data, error: authError } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-    if (response.ok) {
-      const data = await response.json();
-      authToken = data.token;
-      localStorage.setItem(sessionKey, data.token);
-      error.textContent = "";
-      updateAuthView();
-      loadEmployees();
-      loadSalesHistory();
-    } else {
-      error.textContent = "Email ou password inválidos.";
-    }
-  } catch (err) {
-    error.textContent = "Erro de conexão.";
+  if (authError) {
+    error.textContent = "Email ou password inválidos.";
+    return;
   }
+
+  authToken = data.session.access_token;
+  localStorage.setItem(sessionKey, data.session.access_token);
+  error.textContent = "";
+  updateAuthView();
+  loadEmployees();
+  loadSalesHistory();
 }
 
 async function logout() {
-  if (authToken) {
-    try {
-      await fetch(`${API_BASE}/auth?token=${authToken}`, { method: "DELETE" });
-    } catch (err) {
-      console.error("Logout error:", err);
-    }
-  }
+  await supabase.auth.signOut();
   authToken = null;
   localStorage.removeItem(sessionKey);
   updateAuthView();
@@ -238,7 +232,10 @@ async function saveSalesHistory() {
   try {
     const response = await fetch(`${API_BASE}/sales`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+  "Content-Type": "application/json",
+  "Authorization": `Bearer ${authToken}`
+},
       body: JSON.stringify({ sales: Object.fromEntries(weekDays.map((day) => [day.key, Number(day.sales || 0)])) }),
     });
     if (response.ok) {
@@ -481,7 +478,10 @@ async function addEmployee() {
   try {
     const response = await fetch(`${API_BASE}/employees`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+  "Content-Type": "application/json",
+  "Authorization": `Bearer ${authToken}`
+},
       body: JSON.stringify(newEmployee),
     });
 

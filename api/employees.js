@@ -1,16 +1,45 @@
-const { supabase } = require('./config');
+const { createClient } = require('@supabase/supabase-js');
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+// Helper function para validar token
+async function validateToken(token) {
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  const { data, error } = await supabase.auth.getUser(token);
+  
+  if (error || !data.user) {
+    return null;
+  }
+  
+  return data.user;
+}
 
 module.exports = async (req, res) => {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
+  // Validar token
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  const user = await validateToken(token);
+  
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   try {
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        }
+      }
+    });
+
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('employees')

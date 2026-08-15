@@ -12,6 +12,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   </head>
   <body>
     <section class="login-screen" id="login-screen" aria-labelledby="login-title">
@@ -20,11 +21,11 @@
         <h1 id="login-title">RellenoShifts</h1>
         <label>
           Email
-          <input id="login-email" type="email" autocomplete="email" value="admin@relleno.pt" required />
+          <input id="login-email" type="email" autocomplete="email" value="" required />
         </label>
         <label>
           Password
-          <input id="login-password" type="password" autocomplete="current-password" value="admin123" required />
+          <input id="login-password" type="password" autocomplete="current-password" value="" required />
         </label>
         <p class="login-error" id="login-error" role="alert"></p>
         <button class="primary-action login-submit" type="submit">
