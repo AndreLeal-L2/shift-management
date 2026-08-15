@@ -178,23 +178,25 @@ function isEmployeeAvailable(employee, dayKey, shift, openTime = "08:30", closeT
   const avail = employee.availability?.[dayKey];
   if (!avail) return false;
 
-  if (Array.isArray(avail)) {
-    return avail.includes(shift);
+  // Se for horário customizado, verificar se se sobrepõe ao turno
+  if (typeof avail === "object" && avail.custom && avail.start && avail.end) {
+    const customStart = timeToMinutes(avail.start);
+    const customEnd = timeToMinutes(avail.end);
+    const shiftStart = shift === "day" ? timeToMinutes(openTime) : timeToMinutes("16:00");
+    const shiftEnd = shift === "day" ? timeToMinutes("16:00") : timeToMinutes(closeTime);
+
+    // Verificar se há sobreposição entre o horário customizado e o turno
+    return customStart < shiftEnd && customEnd > shiftStart;
   }
 
-  if (typeof avail === "object") {
-    if (avail.shifts && avail.shifts.includes(shift)) {
-      return true;
-    }
+  // Se tiver shifts definidos (day/night)
+  if (typeof avail === "object" && avail.shifts && avail.shifts.length > 0) {
+    return avail.shifts.includes(shift);
+  }
 
-    if (avail.custom && avail.start && avail.end) {
-      const customStart = timeToMinutes(avail.start);
-      const customEnd = timeToMinutes(avail.end);
-      const shiftStart = shift === "day" ? timeToMinutes(openTime) : timeToMinutes("16:00");
-      const shiftEnd = shift === "day" ? timeToMinutes(closeTime) : timeToMinutes(closeTime);
-
-      return customStart < shiftEnd && customEnd > shiftStart;
-    }
+  // Se for array antigo (compatibilidade)
+  if (Array.isArray(avail)) {
+    return avail.includes(shift);
   }
 
   return false;
