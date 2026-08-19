@@ -1,152 +1,147 @@
-# RellenoShifts - Deployment Guide
+# Relleno Shifts
 
-This guide will help you deploy RellenoShifts with a free Supabase database and Vercel hosting.
+Relleno Shifts e uma aplicacao web para gerir escalas de trabalho de forma simples, visual e rapida. A ferramenta ajuda uma loja ou equipa operacional a transformar disponibilidade, cargos, limites de horas e regras de funcionamento numa escala semanal pronta a usar.
 
-## Prerequisites
-- GitHub account
-- Supabase account (free)
-- Vercel account (free)
+Em vez de montar horarios manualmente em folhas soltas, o Relleno Shifts centraliza a equipa, calcula sugestoes de turnos e permite ajustar a escala depois de gerada.
 
-## Step 1: Set up Supabase Database
+## Conteudo
 
-1. Go to [supabase.com](https://supabase.com) and sign up/login
-2. Click "New Project"
-3. Fill in project details:
-   - **Name**: relleno-shifts
-   - **Database Password**: (generate a strong password, save it!)
-   - **Region**: Choose closest to your users
-4. Wait for project to be created (2-3 minutes)
+- [O Que Resolve](#o-que-resolve)
+- [Funcionalidades](#funcionalidades)
+- [Como Funciona](#como-funciona)
+- [Acesso](#acesso)
+- [Tecnologias](#tecnologias)
+- [Desenvolvimento](#desenvolvimento)
+- [Scripts](#scripts)
+- [Deploy](#deploy)
+- [Variaveis de Ambiente](#variaveis-de-ambiente)
+- [API](#api)
+- [Base de Dados](#base-de-dados)
 
-## Step 2: Create Database Tables
+## O Que Resolve
 
-1. In Supabase dashboard, go to **SQL Editor**
-2. Click "New Query"
-3. Copy the contents of `schema.sql` and paste it
-4. Click "Run" to create the tables
+- Reduz o tempo gasto a montar escalas semanais.
+- Evita colocar colaboradores fora da sua disponibilidade.
+- Ajuda a equilibrar horas entre a equipa.
+- Mostra rapidamente onde faltam pessoas por turno.
+- Permite adaptar a escala ao volume previsto de vendas.
+- Funciona bem em desktop e mobile.
 
-## Step 3: Get Supabase Credentials
+## Funcionalidades
 
-1. In Supabase dashboard, go to **Settings** → **API**
-2. Copy these values:
-   - **Project URL** (looks like: https://xyz.supabase.co)
-   - **anon/public key** (starts with `eyJhbGci...`)
+- Gestao de colaboradores com nome, cargos e limite de horas semanais.
+- Suporte para mais de um cargo por colaborador, como `Cozinha`, `Caixa` e `Sala`.
+- Disponibilidade semanal por dia e por turno.
+- Horarios especificos de disponibilidade, incluindo varios intervalos no mesmo dia.
+- Geracao automatica da melhor escala possivel com base nas regras definidas.
+- Edicao manual dos horarios depois da escala ser gerada.
+- Regras de loja configuraveis, incluindo abertura, fecho e numero de pessoas por turno.
+- Historico e previsao de vendas por dia.
+- Dashboard com cobertura, equipa ativa, vagas por preencher e horas por cargo.
+- Interface responsiva para consulta e ajustes no telemovel.
 
-## Step 4: Deploy to Vercel
+## Como Funciona
 
-### Option A: Using Vercel CLI (Recommended)
+1. A gestao adiciona os colaboradores e define cargos, horas maximas e disponibilidade.
+2. A loja configura as regras de operacao, como horario de abertura, fecho e necessidade por turno.
+3. O sistema cruza disponibilidade, limites de horas e necessidades da semana.
+4. A escala sugerida e gerada automaticamente.
+5. A gestao pode editar entradas e saidas diretamente na escala.
 
-1. Install Vercel CLI:
-   ```bash
-   npm install -g vercel
-   ```
+## Acesso
 
-2. Login to Vercel:
-   ```bash
-   vercel login
-   ```
+A versao atual usa um login administrativo simples:
 
-3. Deploy from your project directory:
-   ```bash
-   cd /Users/AndreLeal_1/Desktop/FoodZ
-   vercel
-   ```
-
-4. Follow the prompts:
-   - **Set up and deploy?** Yes
-   - **Scope**: Select your account
-   - **Link to existing project?** No
-   - **Project name**: relleno-shifts
-   - **Directory**: . (current directory)
-
-5. Add environment variables when prompted:
-   - **NEXT_PUBLIC_SUPABASE_URL**: Your Supabase project URL
-   - **NEXT_PUBLIC_SUPABASE_ANON_KEY**: Your Supabase anon key
-
-6. Deploy to production:
-   ```bash
-   vercel --prod
-   ```
-
-### Option B: Using Vercel Dashboard
-
-1. Push your code to GitHub
-2. Go to [vercel.com](https://vercel.com) and sign up/login
-3. Click "Add New Project"
-4. Import your GitHub repository
-5. Configure project:
-   - **Framework Preset**: Other
-   - **Root Directory**: ./
-   - **Build Command**: (leave empty)
-   - **Output Directory**: ./
-6. Add environment variables:
-   - Go to Settings → Environment Variables
-   - Add `NEXT_PUBLIC_SUPABASE_URL` with your Supabase URL
-   - Add `NEXT_PUBLIC_SUPABASE_ANON_KEY` with your Supabase anon key
-7. Click "Deploy"
-
-## Step 5: Seed Initial Data (Optional)
-
-Your existing employees in `script.js` need to be added to the database. You can:
-
-1. Use the Supabase dashboard **Table Editor** to manually add employees
-2. Or use the API after deployment by logging into your app and using the UI
-
-## Step 6: Test Your Deployment
-
-1. Visit your Vercel deployment URL
-2. Login with: admin@relleno.pt / admin123
-3. Test adding employees
-4. Test saving sales history
-5. Verify data persists across browser sessions
-
-## Environment Variables Reference
-
-Create a `.env` file locally for development:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```text
+Email: admin@relleno.pt
+Password: admin123
 ```
 
-## Local Development
+Os colaboradores e historico de vendas ficam guardados localmente no browser para a aplicacao funcionar imediatamente sem depender de uma base de dados externa.
 
-To test locally with the database:
+## Tecnologias
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
+- HTML, CSS e JavaScript sem framework frontend.
+- Vercel para hosting e funcoes serverless em `/api`.
+- Supabase SDK disponivel para evolucao com persistencia remota.
+- Lucide Icons para iconografia da interface.
 
-2. Create `.env` file with your Supabase credentials
+## Desenvolvimento
 
-3. Run Vercel dev server:
-   ```bash
-   npm run dev
-   ```
+Requisitos:
 
-4. Open http://localhost:3000
+- Node.js 20 ou superior.
+- npm.
 
-## API Endpoints
+Instale as dependencias:
 
-- `GET/POST /api/auth` - Authentication
-- `GET/POST /api/employees` - Employee management
-- `GET/POST /api/sales` - Sales history
+```bash
+npm install
+```
 
-## Troubleshooting
+Valide a sintaxe:
 
-**CORS errors**: Ensure your API endpoints have CORS headers (already included in the code)
+```bash
+npm run check
+```
 
-**Database connection errors**: 
-- Verify Supabase credentials in environment variables
-- Check Supabase project is active (not paused)
+Execute em desenvolvimento:
 
-**Deployment fails**:
-- Ensure `package.json` and `vercel.json` are in the root
-- Check Vercel logs for specific errors
+```bash
+npm run dev
+```
 
-## Cost
+Por padrao, `vercel dev` abre a aplicacao localmente e serve tambem as funcoes em `/api`.
 
-- **Supabase**: Free tier (500MB database, 1GB bandwidth)
-- **Vercel**: Free tier (100GB bandwidth, unlimited deployments)
+## Scripts
 
-Both are sufficient for this application.
+| Comando | Descricao |
+| --- | --- |
+| `npm run dev` | Inicia o ambiente local com Vercel. |
+| `npm run check` | Valida a sintaxe dos ficheiros JavaScript principais. |
+| `npm run audit` | Executa auditoria de dependencias sem dependencias de desenvolvimento. |
+
+## Deploy
+
+O projeto esta configurado para Vercel.
+
+```bash
+npx vercel deploy --prod
+```
+
+No dashboard da Vercel, use:
+
+- Framework preset: `Other`
+- Build command: `echo 'No build needed'`
+- Output directory: `./`
+
+## Variaveis de Ambiente
+
+As variaveis abaixo existem para suporte Supabase nas funcoes API, caso a persistencia remota volte a ser usada:
+
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+```
+
+Na versao atual da interface, `USE_LOCAL_DATA` esta ativo em `script.js`, por isso a experiencia principal usa `localStorage`.
+
+## API
+
+As funcoes serverless ficam em `/api`:
+
+| Endpoint | Uso |
+| --- | --- |
+| `/api/auth` | Login administrativo. |
+| `/api/employees` | Leitura e escrita de colaboradores. |
+| `/api/sales` | Leitura e escrita de historico/previsao de vendas. |
+
+## Base de Dados
+
+Para uma base Supabase nova, aplique `schema.sql`.
+
+Para uma base ja existente com politicas antigas, aplique `supabase-security-migration.sql` no SQL Editor da Supabase.
+
+## Nota de Produto
+
+O objetivo do Relleno Shifts e ser uma ferramenta operacional: abrir, ajustar e decidir rapido. A interface privilegia leitura clara, controlo manual quando necessario e uma escala semanal que a equipa consegue entender sem explicacao adicional.
