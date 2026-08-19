@@ -1,70 +1,45 @@
-const { createClient } = require('@supabase/supabase-js');
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-// Helper function para validar token
-async function validateToken(token) {
-  if (!token) return null;
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const { data, error } = await supabase.auth.getUser(token);
-  
-  if (error || !data.user) {
-    return null;
-  }
-  
-  return data.user;
-}
+const {
+  applySecurityHeaders,
+  assertMethod,
+  assertSameOrigin,
+  readJson,
+  requireUser,
+  sendError,
+  validateSalesPayload,
+} = require("./_security");
 
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  applySecurityHeaders(req, res, ["GET", "POST"]);
+  if (!assertMethod(req, res, ["GET", "POST"])) return;
+  if (!assertSameOrigin(req, res)) return;
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  // Validar token
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  const user = await validateToken(token);
-  
-  if (!user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  const session = await requireUser(req, res);
+  if (!session) return;
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        }
-      }
-    });
-
-    if (req.method === 'GET') {
-      const { data, error } = await supabase
-        .from('sales_history')
-        .select('*')
-        .order('recorded_at', { ascending: false });
+    if (req.method === "GET") {
+      const { data, error } = await session.supabase
+        .from("sales_history")
+        .select("id,recorded_at,sales,created_at")
+        .order("recorded_at", { ascending: false })
+        .limit(52);
 
       if (error) throw error;
-      return res.status(200).json(data);
+      return res.status(200).json(data || []);
     }
 
-    if (req.method === 'POST') {
-      const { sales } = req.body;
-      const { data, error } = await supabase
-        .from('sales_history')
-        .insert([{ recorded_at: new Date().toISOString(), sales }])
-        .select();
+    const parsed = validateSalesPayload(await readJson(req));
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
 
-      if (error) throw error;
-      return res.status(201).json(data[0]);
-    }
+    const { data, error } = await session.supabase
+      .from("sales_history")
+      .insert([{ recorded_at: new Date().toISOString(), sales: parsed.value }])
+      .select("id,recorded_at,sales,created_at")
+      .single();
 
-    return res.status(405).json({ error: 'Method not allowed' });
+    if (error) throw error;
+    return res.status(201).json(data);
   } catch (error) {
-    console.error('API Error:', error);
-    return res.status(500).json({ error: error.message });
+    return sendError(res, error);
   }
 };

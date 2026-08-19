@@ -1,7 +1,3 @@
-const supabaseUrl = 'https://zebcriljgnwvlpgygrib.supabase.co';
-const supabaseKey = 'sb_publishable_UFL7ezhY0JNI0piyKqBg1w_sBajjfJS';
-const supabaseClient = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
-
 const weekDays = [
   { key: "seg", label: "Segunda", sales: 0 },
   { key: "ter", label: "Terça", sales: 0 },
@@ -14,43 +10,175 @@ const weekDays = [
 
 let employees = [];
 let salesHistory = [];
+let currentSchedule = null;
 const assignedHours = new Map();
-const sessionKey = "rellenoShiftsSession";
 const API_BASE = "/api";
-let authToken = localStorage.getItem(sessionKey);
+const LOCAL_EMPLOYEES_KEY = "rellenoShiftsEmployees";
+const LOCAL_SALES_KEY = "rellenoShiftsSalesHistory";
+const LOCAL_AUTH_KEY = "rellenoShiftsAuthenticated";
+const ADMIN_EMAIL = "admin@relleno.pt";
+const ADMIN_PASSWORD = "admin123";
+const USE_LOCAL_DATA = true;
+const memoryStore = {};
 
 // State for active page, view mode and selected day
 let currentPage = "escala";
 let currentViewMode = window.innerWidth <= 760 ? "daily" : "weekly";
 let selectedDayKey = "seg";
 
-async function getSessionToken() {
-  if (!supabaseClient) return null;
-  const { data } = await supabaseClient.auth.getSession();
-  return data?.session?.access_token || null;
+const iconFallbacks = {
+  "alert-triangle": "!",
+  "bar-chart-3": "▥",
+  "calendar-days": "▦",
+  "chart-no-axes-combined": "↗",
+  "check-circle-2": "✓",
+  "clock": "◷",
+  euro: "€",
+  history: "↺",
+  "log-in": "↪",
+  "log-out": "↩",
+  pencil: "✎",
+  percent: "%",
+  save: "▣",
+  "sliders-horizontal": "☷",
+  "trash-2": "⌫",
+  "user-minus": "−",
+  "user-plus": "+",
+  users: "◌",
+  "wand-sparkles": "✦",
+  x: "×",
+};
+
+window.lucide = window.lucide || {
+  createIcons() {
+    document.querySelectorAll("i[data-lucide]").forEach((icon) => {
+      if (!icon.textContent) {
+        icon.textContent = iconFallbacks[icon.dataset.lucide] || "";
+      }
+    });
+  },
+};
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 async function isLoggedIn() {
-  const token = await getSessionToken();
-  return !!token;
+  if (readStorageValue(LOCAL_AUTH_KEY) === "true") {
+    return true;
+  }
+
+  if (USE_LOCAL_DATA) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/auth`, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return false;
+    const data = await response.json().catch(() => ({}));
+    return data.authenticated === true;
+  } catch (_) {
+    return false;
+  }
 }
 
 async function updateAuthView() {
   const loggedIn = await isLoggedIn();
   document.body.classList.toggle("locked", !loggedIn);
-  if (loggedIn) {
-    authToken = await getSessionToken();
-    if (authToken) localStorage.setItem(sessionKey, authToken);
-  }
+  return loggedIn;
 }
 
 async function apiFetch(endpoint, options = {}) {
-  if (!authToken) authToken = await getSessionToken();
   const headers = {
     "Content-Type": "application/json",
-    ...(authToken ? { "Authorization": `Bearer ${authToken}` } : {})
+    Accept: "application/json",
+    ...(options.headers || {}),
   };
-  return fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+  return fetch(`${API_BASE}${endpoint}`, { ...options, credentials: "same-origin", headers });
+}
+
+function readLocalJson(key, fallback) {
+  try {
+    const raw = readStorageValue(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function writeLocalJson(key, value) {
+  writeStorageValue(key, JSON.stringify(value));
+}
+
+function readStorageValue(key) {
+  if (Object.prototype.hasOwnProperty.call(memoryStore, key)) {
+    return memoryStore[key];
+  }
+
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage.getItem(key);
+    }
+  } catch (_) {}
+
+  return null;
+}
+
+function writeStorageValue(key, value) {
+  memoryStore[key] = value;
+
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem(key, value);
+    }
+  } catch (_) {}
+}
+
+function removeStorageValue(key) {
+  delete memoryStore[key];
+
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(key);
+    }
+  } catch (_) {}
+}
+
+function localId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function readApiError(response) {
+  try {
+    const body = await response.json();
+    if (typeof body?.error === "string") return body.error;
+    if (body?.error?.message) return body.error.message;
+    return JSON.stringify(body);
+  } catch (_) {
+    return response.statusText || "Erro desconhecido";
+  }
+}
+
+function normalizeEmployeeRecord(emp) {
+  return {
+    id: emp.id,
+    name: emp.name,
+    role: emp.role,
+    maxHours: emp.max_hours || emp.maxHours || 40,
+    availability: emp.availability || {}
+  };
 }
 
 // Page Navigation System
@@ -88,23 +216,30 @@ async function handleLogin(event) {
   const password = document.querySelector("#login-password").value;
   const error = document.querySelector("#login-error");
 
-  if (!supabaseClient) {
-    error.textContent = "Erro de inicialização do Supabase.";
+  if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+    writeStorageValue(LOCAL_AUTH_KEY, "true");
+    error.textContent = "";
+    await updateAuthView();
+    await loadEmployees();
+    await loadSalesHistory();
     return;
   }
 
-  const { data, error: authError } = await supabaseClient.auth.signInWithPassword({
-    email,
-    password,
-  });
-
-  if (authError) {
+  if (USE_LOCAL_DATA) {
     error.textContent = "Email ou palavra-passe inválidos.";
     return;
   }
 
-  authToken = data.session.access_token;
-  localStorage.setItem(sessionKey, data.session.access_token);
+  const response = await apiFetch("/auth", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!response.ok) {
+    error.textContent = "Email ou palavra-passe inválidos.";
+    return;
+  }
+
   error.textContent = "";
   await updateAuthView();
   await loadEmployees();
@@ -112,11 +247,10 @@ async function handleLogin(event) {
 }
 
 async function logout() {
-  if (supabaseClient) {
-    await supabaseClient.auth.signOut();
+  removeStorageValue(LOCAL_AUTH_KEY);
+  if (!USE_LOCAL_DATA) {
+    await apiFetch("/auth", { method: "DELETE" });
   }
-  authToken = null;
-  localStorage.removeItem(sessionKey);
   await updateAuthView();
 }
 
@@ -128,16 +262,29 @@ function demandLabel(value) {
 }
 
 function shiftHours(shift, openTime, closeTime) {
-  return shift === "day" ? `${openTime}-16:00` : `16:00-${closeTime}`;
+  if (shift === "day") return `${openTime}-16:00`;
+  const closeMins = normalizeEndMinutes("16:00", closeTime);
+  return `${minutesToTime(closeMins - 8 * 60)}-${closeTime}`;
+}
+
+function splitRoles(role) {
+  return String(role || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function roleLabel(role) {
+  const roles = splitRoles(role);
+  return roles.length ? roles.join(", ") : "Sem cargo";
 }
 
 function getRoleBadgeClass(role) {
   const r = (role || "").toLowerCase();
-  if (r.includes("sala")) return "badge-sala";
   if (r.includes("cozinha")) return "badge-cozinha";
-  if (r.includes("bar")) return "badge-bar";
   if (r.includes("caixa")) return "badge-caixa";
-  return "badge-apoio";
+  if (r.includes("gerente")) return "badge-gerente";
+  return "badge-gerente";
 }
 
 function timeToMinutes(timeStr) {
@@ -146,47 +293,109 @@ function timeToMinutes(timeStr) {
   return (h || 0) * 60 + (m || 0);
 }
 
+function normalizeEndMinutes(start, end) {
+  const startMins = timeToMinutes(start);
+  let endMins = timeToMinutes(end);
+  if (endMins <= startMins) endMins += 24 * 60;
+  return endMins;
+}
+
+function minutesToTime(totalMinutes) {
+  const normalized = ((Math.round(totalMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const hours = String(Math.floor(normalized / 60)).padStart(2, "0");
+  const minutes = String(normalized % 60).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function getAvailabilityIntervals(dayData) {
+  if (!dayData || typeof dayData !== "object" || Array.isArray(dayData)) return [];
+  const rawIntervals = Array.isArray(dayData.intervals)
+    ? dayData.intervals
+    : dayData.custom && dayData.start && dayData.end
+      ? [{ start: dayData.start, end: dayData.end }]
+      : [];
+
+  return rawIntervals
+    .filter((interval) => interval && interval.start && interval.end)
+    .map((interval) => ({
+      start: interval.start,
+      end: interval.end,
+      startMins: timeToMinutes(interval.start),
+      endMins: normalizeEndMinutes(interval.start, interval.end),
+    }))
+    .filter((interval) => interval.endMins > interval.startMins);
+}
+
+function getShiftWindow(shift, openTime = "08:30", closeTime = "23:00") {
+  const closeMins = normalizeEndMinutes("16:00", closeTime);
+  const start = shift === "day" ? timeToMinutes(openTime) : closeMins - 8 * 60;
+  const storeClose = shift === "day" ? timeToMinutes("16:00") : normalizeEndMinutes("16:00", closeTime);
+  return { start, end: storeClose };
+}
+
 function getEmployeeShiftDetails(employee, dayKey, shift, openTime = "08:30", closeTime = "23:00") {
   const avail = employee.availability?.[dayKey];
-  const openMins = timeToMinutes(openTime);
-  const closeMins = timeToMinutes(closeTime);
-  const shiftStartMins = shift === "day" ? openMins : timeToMinutes("16:00");
-  const shiftEndMins = shift === "day" ? timeToMinutes("16:00") : closeMins;
+  const defaultWindow = getShiftWindow(shift, openTime, closeTime, false);
+  const shiftStartMins = defaultWindow.start;
+  const shiftEndMins = defaultWindow.end;
   const defaultDuration = Math.max(0.5, (shiftEndMins - shiftStartMins) / 60);
 
   if (!avail) {
-    return { duration: defaultDuration, display: shiftHours(shift, openTime, closeTime) };
+    return {
+      duration: defaultDuration,
+      display: shiftHours(shift, openTime, closeTime),
+      start: minutesToTime(shiftStartMins),
+      end: minutesToTime(shiftEndMins),
+    };
   }
 
   if (Array.isArray(avail)) {
-    return { duration: defaultDuration, display: shiftHours(shift, openTime, closeTime) };
+    return {
+      duration: defaultDuration,
+      display: shiftHours(shift, openTime, closeTime),
+      start: minutesToTime(shiftStartMins),
+      end: minutesToTime(shiftEndMins),
+    };
   }
 
-  if (typeof avail === "object" && avail !== null) {
-    if (avail.custom && avail.start && avail.end) {
-      const customStartMins = timeToMinutes(avail.start);
-      const customEndMins = timeToMinutes(avail.end);
-      const duration = Math.max(0.5, (customEndMins - customStartMins) / 60);
-      return { duration, display: `${avail.start}-${avail.end}` };
+  const intervals = getAvailabilityIntervals(avail);
+  if (intervals.length) {
+    const targetWindow = getShiftWindow(shift, openTime, closeTime);
+    const best = intervals
+      .map((interval) => {
+        const start = Math.max(interval.startMins, targetWindow.start);
+        const end = Math.min(interval.endMins, targetWindow.end, start + 8 * 60);
+        return { start, end, duration: Math.max(0, (end - start) / 60) };
+      })
+      .filter((interval) => interval.duration > 0)
+      .sort((a, b) => b.duration - a.duration)[0];
+
+    if (best) {
+      return {
+        duration: Math.max(0.5, best.duration),
+        display: `${minutesToTime(best.start)}-${minutesToTime(best.end)}`,
+        start: minutesToTime(best.start),
+        end: minutesToTime(best.end),
+      };
     }
   }
 
-  return { duration: defaultDuration, display: shiftHours(shift, openTime, closeTime) };
+  return {
+    duration: defaultDuration,
+    display: shiftHours(shift, openTime, closeTime),
+    start: minutesToTime(shiftStartMins),
+    end: minutesToTime(shiftEndMins),
+  };
 }
 
 function isEmployeeAvailable(employee, dayKey, shift, openTime = "08:30", closeTime = "23:00") {
   const avail = employee.availability?.[dayKey];
   if (!avail) return false;
 
-  // Se for horário customizado, verificar se se sobrepõe ao turno
-  if (typeof avail === "object" && avail.custom && avail.start && avail.end) {
-    const customStart = timeToMinutes(avail.start);
-    const customEnd = timeToMinutes(avail.end);
-    const shiftStart = shift === "day" ? timeToMinutes(openTime) : timeToMinutes("16:00");
-    const shiftEnd = shift === "day" ? timeToMinutes("16:00") : timeToMinutes(closeTime);
-
-    // Verificar se há sobreposição entre o horário customizado e o turno
-    return customStart < shiftEnd && customEnd > shiftStart;
+  const intervals = getAvailabilityIntervals(avail);
+  if (intervals.length) {
+    const shiftWindow = getShiftWindow(shift, openTime, closeTime);
+    return intervals.some((interval) => interval.startMins < shiftWindow.end && interval.endMins > shiftWindow.start);
   }
 
   // Se tiver shifts definidos (day/night)
@@ -203,10 +412,20 @@ function isEmployeeAvailable(employee, dayKey, shift, openTime = "08:30", closeT
 }
 
 async function loadSalesHistory() {
+  if (USE_LOCAL_DATA) {
+    salesHistory = readLocalJson(LOCAL_SALES_KEY, []);
+    renderSales();
+    renderMobileDaySelector();
+    generateSchedule();
+    renderStatistics();
+    return;
+  }
+
   try {
     const response = await apiFetch("/sales");
     if (response.ok) {
       salesHistory = await response.json();
+      writeLocalJson(LOCAL_SALES_KEY, salesHistory);
       if (salesHistory.length > 0 && weekDays.every((d) => d.sales === 0)) {
         const latestWeek = salesHistory[0];
         if (latestWeek && latestWeek.sales) {
@@ -225,22 +444,47 @@ async function loadSalesHistory() {
   } catch (err) {
     console.error("Erro ao carregar histórico de vendas:", err);
   }
+
+  if (!salesHistory.length) {
+    salesHistory = readLocalJson(LOCAL_SALES_KEY, []);
+    renderSales();
+    renderMobileDaySelector();
+    generateSchedule();
+    renderStatistics();
+  }
 }
 
 async function saveSalesHistory() {
+  const entry = {
+    id: localId(),
+    recorded_at: new Date().toISOString(),
+    sales: Object.fromEntries(weekDays.map((day) => [day.key, Number(day.sales || 0)])),
+    created_at: new Date().toISOString(),
+  };
+
+  if (USE_LOCAL_DATA) {
+    salesHistory = [entry, ...readLocalJson(LOCAL_SALES_KEY, [])].slice(0, 52);
+    writeLocalJson(LOCAL_SALES_KEY, salesHistory);
+    return;
+  }
+
   try {
     const response = await apiFetch("/sales", {
       method: "POST",
       body: JSON.stringify({
-        sales: Object.fromEntries(weekDays.map((day) => [day.key, Number(day.sales || 0)]))
+        sales: entry.sales
       }),
     });
     if (response.ok) {
       await loadSalesHistory();
+      return;
     }
   } catch (err) {
     console.error("Erro ao guardar histórico de vendas:", err);
   }
+
+  salesHistory = [entry, ...readLocalJson(LOCAL_SALES_KEY, [])].slice(0, 52);
+  writeLocalJson(LOCAL_SALES_KEY, salesHistory);
 }
 
 function salesSuggestions() {
@@ -334,38 +578,49 @@ function applySalesSuggestion() {
 }
 
 async function loadEmployees() {
+  if (USE_LOCAL_DATA) {
+    employees = readLocalJson(LOCAL_EMPLOYEES_KEY, []).map(normalizeEmployeeRecord);
+    renderTeam();
+    generateSchedule();
+    renderStatistics();
+    return;
+  }
+
   try {
     const response = await apiFetch("/employees");
     if (response.ok) {
       const data = await response.json();
-      employees = data.map((emp) => ({
-        id: emp.id,
-        name: emp.name,
-        role: emp.role,
-        maxHours: emp.max_hours || emp.maxHours || 40,
-        availability: emp.availability || {}
-      }));
+      const remoteEmployees = data.map(normalizeEmployeeRecord);
+      const localEmployees = readLocalJson(LOCAL_EMPLOYEES_KEY, []).map(normalizeEmployeeRecord);
+      employees = remoteEmployees.length ? remoteEmployees : localEmployees;
+      writeLocalJson(LOCAL_EMPLOYEES_KEY, employees);
       renderTeam();
       generateSchedule();
       renderStatistics();
+      return;
     }
   } catch (err) {
     console.error("Erro ao carregar colaboradores:", err);
   }
+
+  employees = readLocalJson(LOCAL_EMPLOYEES_KEY, []).map(normalizeEmployeeRecord);
+  renderTeam();
+  generateSchedule();
+  renderStatistics();
 }
 
 function renderMatrixGrid(currentAvailability = {}) {
   const container = document.querySelector("#availability-matrix-grid");
   if (!container) return;
+  const openTime = document.querySelector("#open-time")?.value || "08:30";
+  const closeTime = document.querySelector("#close-time")?.value || "23:00";
   container.innerHTML = "";
 
   weekDays.forEach((day) => {
     const dayData = currentAvailability[day.key];
     let hasDay = false;
     let hasNight = false;
-    let isCustom = false;
-    let customStart = "09:00";
-    let customEnd = "17:00";
+    let intervals = [];
 
     if (Array.isArray(dayData)) {
       hasDay = dayData.includes("day");
@@ -373,10 +628,14 @@ function renderMatrixGrid(currentAvailability = {}) {
     } else if (typeof dayData === "object" && dayData !== null) {
       hasDay = (dayData.shifts || []).includes("day");
       hasNight = (dayData.shifts || []).includes("night");
-      isCustom = !!dayData.custom;
-      if (dayData.start) customStart = dayData.start;
-      if (dayData.end) customEnd = dayData.end;
+      intervals = getAvailabilityIntervals(dayData).map((interval) => ({
+        start: interval.start,
+        end: interval.end,
+      }));
     }
+
+    if (!intervals.length) intervals = [{ start: "09:00", end: "17:00" }];
+    const hasSpecificHours = getAvailabilityIntervals(dayData).length > 0;
 
     const row = document.createElement("div");
     row.className = "matrix-row";
@@ -385,21 +644,32 @@ function renderMatrixGrid(currentAvailability = {}) {
       <div class="matrix-options">
         <label class="matrix-check">
           <input type="checkbox" name="avail-shift-${day.key}" value="day" ${hasDay ? "checked" : ""}>
-          <span>Dia (08:30-16:00)</span>
+          <span>Dia (${escapeHtml(shiftHours("day", openTime, closeTime))})</span>
         </label>
         <label class="matrix-check">
           <input type="checkbox" name="avail-shift-${day.key}" value="night" ${hasNight ? "checked" : ""}>
-          <span>Noite (16:00-23:00)</span>
+          <span>Noite (${escapeHtml(shiftHours("night", openTime, closeTime))})</span>
         </label>
         <div class="custom-hours-box">
           <label class="matrix-check custom-toggle">
-            <input type="checkbox" name="avail-custom-toggle-${day.key}" value="1" ${isCustom ? "checked" : ""} data-day-toggle="${day.key}">
-            <span>Horário Específico</span>
+            <input type="checkbox" name="avail-custom-toggle-${day.key}" value="1" ${hasSpecificHours ? "checked" : ""} data-day-toggle="${day.key}">
+            <span>Horários Específicos</span>
           </label>
-          <div class="custom-time-inputs ${isCustom ? '' : 'hidden'}" id="custom-inputs-${day.key}">
-            <input type="time" name="avail-start-${day.key}" value="${customStart}">
-            <span>até</span>
-            <input type="time" name="avail-end-${day.key}" value="${customEnd}">
+          <div class="custom-time-inputs ${hasSpecificHours ? '' : 'hidden'}" id="custom-inputs-${day.key}" data-interval-list="${day.key}">
+            ${intervals.map((interval, index) => `
+              <div class="availability-interval-row">
+                <input type="time" name="avail-start-${day.key}" value="${escapeHtml(interval.start)}">
+                <span>até</span>
+                <input type="time" name="avail-end-${day.key}" value="${escapeHtml(interval.end)}">
+                <button class="icon-btn remove-interval" type="button" data-remove-interval="${day.key}" aria-label="Remover horário" ${index === 0 ? "disabled" : ""}>
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </div>
+            `).join("")}
+            <button class="secondary-action compact-action add-interval" type="button" data-add-interval="${day.key}">
+              <i data-lucide="user-plus"></i>
+              Adicionar horário
+            </button>
           </div>
         </div>
       </div>
@@ -416,6 +686,35 @@ function renderMatrixGrid(currentAvailability = {}) {
       }
     });
   });
+
+  container.querySelectorAll("[data-add-interval]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const dayKey = button.dataset.addInterval;
+      const list = container.querySelector(`[data-interval-list="${dayKey}"]`);
+      if (!list) return;
+      const [nightStart, nightEnd] = shiftHours("night", openTime, closeTime).split("-");
+      const row = document.createElement("div");
+      row.className = "availability-interval-row";
+      row.innerHTML = `
+        <input type="time" name="avail-start-${dayKey}" value="${escapeHtml(nightStart)}">
+        <span>até</span>
+        <input type="time" name="avail-end-${dayKey}" value="${escapeHtml(nightEnd)}">
+        <button class="icon-btn remove-interval" type="button" data-remove-interval="${dayKey}" aria-label="Remover horário">
+          <i data-lucide="trash-2"></i>
+        </button>
+      `;
+      list.insertBefore(row, button);
+      if (window.lucide) window.lucide.createIcons();
+    });
+  });
+
+  container.onclick = (event) => {
+    const removeButton = event.target.closest("[data-remove-interval]");
+    if (!removeButton || removeButton.disabled) return;
+    removeButton.closest(".availability-interval-row")?.remove();
+  };
+
+  if (window.lucide) window.lucide.createIcons();
 }
 
 function openEmployeeModal(employeeToEdit = null) {
@@ -437,7 +736,7 @@ function openEmployeeModal(employeeToEdit = null) {
     title.textContent = "Adicionar Colaborador";
     empIdInput.value = "";
     nameInput.value = "";
-    roleInput.value = "Sala";
+    roleInput.value = "";
     hoursInput.value = 40;
     renderMatrixGrid({
       seg: { shifts: ["day", "night"], custom: false },
@@ -476,18 +775,50 @@ async function handleEmployeeFormSubmit(event) {
     ).map((cb) => cb.value);
 
     const isCustom = document.querySelector(`input[name="avail-custom-toggle-${day.key}"]`)?.checked || false;
-    const startVal = document.querySelector(`input[name="avail-start-${day.key}"]`)?.value || "09:00";
-    const endVal = document.querySelector(`input[name="avail-end-${day.key}"]`)?.value || "17:00";
+    const startInputs = Array.from(document.querySelectorAll(`input[name="avail-start-${day.key}"]`));
+    const endInputs = Array.from(document.querySelectorAll(`input[name="avail-end-${day.key}"]`));
+    const intervals = startInputs
+      .map((input, index) => ({
+        start: input.value || "09:00",
+        end: endInputs[index]?.value || "17:00",
+      }))
+      .filter((interval) => interval.start && interval.end);
 
     availability[day.key] = {
       shifts: shiftsChecked,
       custom: isCustom,
-      start: startVal,
-      end: endVal
+      start: intervals[0]?.start || "09:00",
+      end: intervals[0]?.end || "17:00",
+      intervals: isCustom ? intervals : []
     };
   });
 
   const payload = { name, role, maxHours, availability };
+  const localEmployees = readLocalJson(LOCAL_EMPLOYEES_KEY, employees).map(normalizeEmployeeRecord);
+  const localRecord = normalizeEmployeeRecord({
+    ...payload,
+    id: id || localId(),
+  });
+
+  if (id) {
+    const existingIndex = localEmployees.findIndex((employee) => String(employee.id) === String(id));
+    if (existingIndex >= 0) {
+      localEmployees[existingIndex] = localRecord;
+    } else {
+      localEmployees.push(localRecord);
+    }
+  } else {
+    localEmployees.push(localRecord);
+  }
+
+  employees = localEmployees;
+  writeLocalJson(LOCAL_EMPLOYEES_KEY, employees);
+  closeEmployeeModal();
+  renderTeam();
+  generateSchedule();
+  renderStatistics();
+
+  if (USE_LOCAL_DATA) return;
 
   try {
     let response;
@@ -505,11 +836,14 @@ async function handleEmployeeFormSubmit(event) {
     }
 
     if (response.ok) {
-      closeEmployeeModal();
-      await loadEmployees();
+      const saved = normalizeEmployeeRecord(await response.json());
+      employees = readLocalJson(LOCAL_EMPLOYEES_KEY, employees)
+        .map(normalizeEmployeeRecord)
+        .map((employee) => String(employee.id) === String(localRecord.id) ? saved : employee);
+      writeLocalJson(LOCAL_EMPLOYEES_KEY, employees);
+      return;
     } else {
-      const err = await response.json();
-      alert("Erro ao guardar colaborador: " + (err.error || "Tente novamente"));
+      throw new Error(await readApiError(response));
     }
   } catch (err) {
     console.error("Erro ao guardar colaborador:", err);
@@ -521,8 +855,9 @@ function formatAvailabilityTag(dayData) {
     return dayData.map(s => s === "day" ? "Dia" : "Noite").join("/");
   }
   if (typeof dayData === "object" && dayData !== null) {
-    if (dayData.custom && dayData.start && dayData.end) {
-      return `${dayData.start}-${dayData.end}`;
+    const intervals = getAvailabilityIntervals(dayData);
+    if (intervals.length) {
+      return intervals.map((interval) => `${escapeHtml(interval.start)}-${escapeHtml(interval.end)}`).join(", ");
     }
     if (dayData.shifts && dayData.shifts.length) {
       return dayData.shifts.map(s => s === "day" ? "Dia" : "Noite").join("/");
@@ -559,30 +894,32 @@ function renderTeam() {
       .map((day) => {
         const tagText = formatAvailabilityTag(employee.availability?.[day.key]);
         if (!tagText) return "";
-        return `<span>${day.label.slice(0, 3)}: ${tagText}</span>`;
+        return `<span>${escapeHtml(day.label.slice(0, 3))}: ${tagText}</span>`;
       })
       .filter(Boolean)
       .join("");
 
-    const roleBadge = getRoleBadgeClass(employee.role);
+    const roleBadges = splitRoles(employee.role)
+      .map((role) => `<span class="role-badge ${escapeHtml(getRoleBadgeClass(role))}">${escapeHtml(role)}</span>`)
+      .join("");
 
     card.innerHTML = `
       <div class="member-top">
         <div class="member-info">
-          <div class="avatar">${employee.name.slice(0, 1).toUpperCase()}</div>
+          <div class="avatar">${escapeHtml(employee.name.slice(0, 1).toUpperCase())}</div>
           <div>
-            <strong>${employee.name}</strong>
+            <strong>${escapeHtml(employee.name)}</strong>
             <div class="role-group">
-              <span class="role-badge ${roleBadge}">${employee.role}</span>
-              <small>${employee.maxHours}h/sem</small>
+              ${roleBadges || `<span class="role-badge ${escapeHtml(getRoleBadgeClass(employee.role))}">${escapeHtml(roleLabel(employee.role))}</span>`}
+              <small>${escapeHtml(employee.maxHours)}h/sem</small>
             </div>
           </div>
         </div>
         <div class="member-actions">
-          <button class="icon-btn edit-member" type="button" data-edit-employee="${employee.id}" aria-label="Editar ${employee.name}">
+          <button class="icon-btn edit-member" type="button" data-edit-employee="${escapeHtml(employee.id)}" aria-label="Editar ${escapeHtml(employee.name)}">
             <i data-lucide="pencil"></i>
           </button>
-          <button class="icon-btn remove-member" type="button" data-remove-employee="${employee.id}" aria-label="Remover ${employee.name}">
+          <button class="icon-btn remove-member" type="button" data-remove-employee="${escapeHtml(employee.id)}" aria-label="Remover ${escapeHtml(employee.name)}">
             <i data-lucide="trash-2"></i>
           </button>
         </div>
@@ -604,16 +941,16 @@ function pickEmployees(dayKey, shift, required, openTime, closeTime) {
       // Priorizar colaboradores com menos horas atribuídas
       const hoursA = assignedHours.get(a.name) || 0;
       const hoursB = assignedHours.get(b.name) || 0;
-      
+
       // Se um está muito mais perto do limite, dar prioridade ao outro
       const remainingA = a.maxHours - hoursA;
       const remainingB = b.maxHours - hoursB;
-      
+
       // Primeiro, ordenar por quem tem mais horas disponíveis
       if (remainingA !== remainingB) {
         return remainingB - remainingA;
       }
-      
+
       // Depois, por quem tem menos horas atribuídas
       return hoursA - hoursB;
     });
@@ -629,7 +966,9 @@ function pickEmployees(dayKey, shift, required, openTime, closeTime) {
       selected.push({
         ...employee,
         assignedHoursText: details.display,
-        assignedDuration: duration
+        assignedDuration: duration,
+        assignedStart: details.start,
+        assignedEnd: details.end
       });
       assignedHours.set(employee.name, currentHours + duration);
     }
@@ -655,12 +994,430 @@ function renderMobileDaySelector() {
     btn.onclick = () => {
       selectedDayKey = day.key;
       renderMobileDaySelector();
-      generateSchedule();
+      if (currentSchedule) {
+        renderCurrentSchedule();
+      } else {
+        generateSchedule();
+      }
     };
     bar.appendChild(btn);
   });
 }
 
+function clearSchedule() {
+  const grid = document.querySelector("#schedule-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  currentSchedule = null;
+
+  const coverageStatusEl = document.querySelector("#coverage-status");
+  if (coverageStatusEl) {
+    coverageStatusEl.textContent = "Escala limpa";
+    coverageStatusEl.className = "status-badge";
+  }
+
+  assignedHours.clear();
+}
+
+// ============================================
+// CONFIGURAÇÃO E PESOS DO ALGORITMO
+// ============================================
+const SCHEDULE_WEIGHTS = {
+  coverage: 100,           // Cobertura mínima
+  filledSlots: 50,         // Vagas preenchidas
+  fairness: 30,            // Equilíbrio de horas
+  dailyCoverage: 25,       // Cobertura diária de 8h
+  rarity: 20,              // Preservar colaboradores raros
+  unfilledSlots: -100,     // Penalização por vagas vazias
+  employeeOverload: -50,   // Penalização por excesso de horas
+  unnecessaryMove: -10     // Penalização por movimentos desnecessários
+};
+
+const MAX_OPTIMIZATION_ITERATIONS = 50;
+
+// ============================================
+// FUNÇÕES AUXILIARES DE VALIDAÇÃO
+// ============================================
+function validateConfiguration(employees, baseDayRequired, baseNightRequired) {
+  const errors = [];
+
+  if (!employees || employees.length === 0) {
+    errors.push("Nenhum colaborador disponível");
+  }
+
+  if (baseDayRequired < 1 || baseNightRequired < 1) {
+    errors.push("Requisito mínimo deve ser pelo menos 1 pessoa por turno");
+  }
+
+  employees.forEach(emp => {
+    if (emp.maxHours <= 0) {
+      errors.push(`Colaborador ${emp.name} tem maxHours inválido: ${emp.maxHours}`);
+    }
+  });
+
+  return { valid: errors.length === 0, errors };
+}
+
+// ============================================
+// FUNÇÕES AUXILIARES DE ÍNDICES
+// ============================================
+function buildAvailabilityIndex(employees, openTime, closeTime) {
+  const index = {};
+
+  employees.forEach(emp => {
+    index[emp.name] = {
+      day: isEmployeeAvailable(emp, "seg", "day", openTime, closeTime) ||
+            isEmployeeAvailable(emp, "ter", "day", openTime, closeTime) ||
+            isEmployeeAvailable(emp, "qua", "day", openTime, closeTime) ||
+            isEmployeeAvailable(emp, "qui", "day", openTime, closeTime) ||
+            isEmployeeAvailable(emp, "sex", "day", openTime, closeTime) ||
+            isEmployeeAvailable(emp, "sab", "day", openTime, closeTime) ||
+            isEmployeeAvailable(emp, "dom", "day", openTime, closeTime),
+      night: isEmployeeAvailable(emp, "seg", "night", openTime, closeTime) ||
+             isEmployeeAvailable(emp, "ter", "night", openTime, closeTime) ||
+             isEmployeeAvailable(emp, "qua", "night", openTime, closeTime) ||
+             isEmployeeAvailable(emp, "qui", "night", openTime, closeTime) ||
+             isEmployeeAvailable(emp, "sex", "night", openTime, closeTime) ||
+             isEmployeeAvailable(emp, "sab", "night", openTime, closeTime) ||
+             isEmployeeAvailable(emp, "dom", "night", openTime, closeTime)
+    };
+  });
+
+  return index;
+}
+
+function buildShiftCandidates(employees, openTime, closeTime) {
+  const candidates = {};
+
+  weekDays.forEach(day => {
+    candidates[day.key] = {
+      day: employees.filter(emp => isEmployeeAvailable(emp, day.key, "day", openTime, closeTime)),
+      night: employees.filter(emp => isEmployeeAvailable(emp, day.key, "night", openTime, closeTime))
+    };
+  });
+
+  return candidates;
+}
+
+function calculateEmployeeRarity(shiftCandidates) {
+  const rarity = {};
+
+  Object.keys(shiftCandidates).forEach(dayKey => {
+    shiftCandidates[dayKey].day.forEach(emp => {
+      rarity[emp.name] = (rarity[emp.name] || 0) + 1;
+    });
+    shiftCandidates[dayKey].night.forEach(emp => {
+      rarity[emp.name] = (rarity[emp.name] || 0) + 1;
+    });
+  });
+
+  // Inverter: menor número = mais raro
+  Object.keys(rarity).forEach(name => {
+    rarity[name] = 1 / rarity[name];
+  });
+
+  return rarity;
+}
+
+function calculateShiftDifficulty(shiftCandidates, employeeRarity, assignedHours) {
+  const difficulty = {};
+
+  Object.keys(shiftCandidates).forEach(dayKey => {
+    const dayCandidates = shiftCandidates[dayKey].day;
+    const nightCandidates = shiftCandidates[dayKey].night;
+
+    // Calcular dificuldade baseada em:
+    // - Número de candidatos
+    // - Raridade média dos candidatos
+    // - Horas disponíveis dos candidatos
+
+    const dayScore = calculateShiftScore(dayCandidates, employeeRarity, assignedHours);
+    const nightScore = calculateShiftScore(nightCandidates, employeeRarity, assignedHours);
+
+    difficulty[`${dayKey}_day`] = dayScore;
+    difficulty[`${dayKey}_night`] = nightScore;
+  });
+
+  return difficulty;
+}
+
+function calculateShiftScore(candidates, employeeRarity, assignedHours) {
+  if (candidates.length === 0) return Infinity;
+
+  let totalAvailableHours = 0;
+  let totalRarity = 0;
+
+  candidates.forEach(emp => {
+    const currentHours = assignedHours.get(emp.name) || 0;
+    const availableHours = emp.maxHours - currentHours;
+    totalAvailableHours += availableHours;
+    totalRarity += employeeRarity[emp.name] || 0;
+  });
+
+  const avgAvailableHours = totalAvailableHours / candidates.length;
+  const avgRarity = totalRarity / candidates.length;
+
+  // Menor score = mais difícil
+  return (candidates.length * 0.5) + (avgAvailableHours * 0.3) + (avgRarity * 0.2);
+}
+
+// ============================================
+// SISTEMA DE PONTUAÇÃO
+// ============================================
+function calculateRelativeDeficit(assigned, required) {
+  if (required === 0) return 0;
+  return (required - assigned) / required;
+}
+
+function calculateShiftNeedScore(dayKey, shift, schedule, baseDayRequired, baseNightRequired, shiftCandidates, assignedHours) {
+  const currentAssigned = schedule[dayKey][shift].length;
+  const required = shift === "day" ? baseDayRequired : baseNightRequired;
+  const relativeDeficit = calculateRelativeDeficit(currentAssigned, required);
+
+  // Mais défice = maior necessidade
+  let needScore = relativeDeficit * 100;
+
+  // Considerar número de candidatos disponíveis
+  const candidates = shiftCandidates[dayKey][shift];
+  const candidateCount = candidates.length;
+
+  // Menos candidatos = maior necessidade (turno mais difícil)
+  if (candidateCount > 0) {
+    needScore += (1 / candidateCount) * 50;
+  } else {
+    needScore += 1000; // Prioridade máxima se não há candidatos
+  }
+
+  // Considerar horas disponíveis dos candidatos
+  let totalAvailableHours = 0;
+  candidates.forEach(emp => {
+    const currentHours = assignedHours.get(emp.name) || 0;
+    totalAvailableHours += (emp.maxHours - currentHours);
+  });
+
+  if (candidateCount > 0) {
+    const avgAvailableHours = totalAvailableHours / candidateCount;
+    // Menos horas disponíveis = maior necessidade
+    needScore += (1 / (avgAvailableHours + 1)) * 20;
+  }
+
+  return needScore;
+}
+
+function calculateFutureImpact(employee, dayKey, shift, shiftCandidates, assignedHours, openTime, closeTime) {
+  // Calcular quantos turnos alternativos este colaborador pode preencher
+  let alternativeShifts = 0;
+
+  weekDays.forEach(day => {
+    // Verificar se pode trabalhar em outros turnos além do atual
+    if (day.key !== dayKey) {
+      const dayAvailable = isEmployeeAvailable(employee, day.key, "day", openTime, closeTime);
+      const nightAvailable = isEmployeeAvailable(employee, day.key, "night", openTime, closeTime);
+
+      if (dayAvailable) alternativeShifts++;
+      if (nightAvailable) alternativeShifts++;
+    }
+  });
+
+  // Menos alternativas = maior impacto futuro (mais crítico)
+  // Se só pode trabalhar neste turno, impacto é máximo
+  if (alternativeShifts === 0) return 100;
+
+  // Se tem muitas alternativas, impacto é menor
+  return 1 / alternativeShifts;
+}
+
+function calculateAssignmentScore(employee, dayKey, shift, schedule, assignedHours, employeeRarity, shiftDifficulty, shiftNeedScore, shiftCandidates, openTime, closeTime) {
+  const currentHours = assignedHours.get(employee.name) || 0;
+  const remainingHours = employee.maxHours - currentHours;
+  const hoursPercentage = currentHours / employee.maxHours;
+
+  let score = 0;
+
+  // Peso: necessidade do turno (prioridade máxima)
+  score += shiftNeedScore * 2;
+
+  // Peso: disponibilidade de horas
+  score += (remainingHours / employee.maxHours) * SCHEDULE_WEIGHTS.coverage;
+
+  // Peso: equilíbrio (preferir quem tem menos % de horas usadas)
+  score += (1 - hoursPercentage) * SCHEDULE_WEIGHTS.fairness;
+
+  // Peso: raridade (penalizar uso de colaboradores raros se houver alternativas)
+  const rarity = employeeRarity[employee.name] || 0;
+  score -= rarity * SCHEDULE_WEIGHTS.rarity;
+
+  // NOVO: Peso: impacto futuro (preservar colaboradores críticos)
+  const futureImpact = calculateFutureImpact(employee, dayKey, shift, shiftCandidates, assignedHours, openTime, closeTime);
+  // Penalizar uso de colaboradores com alto impacto futuro (poucas alternativas)
+  score -= futureImpact * SCHEDULE_WEIGHTS.rarity * 2;
+
+  // Peso: dificuldade do turno
+  const shiftKey = `${dayKey}_${shift}`;
+  const difficulty = shiftDifficulty[shiftKey] || 0;
+  score += (1 / (difficulty + 1)) * 10;
+
+  return score;
+}
+
+// ============================================
+// AVALIAÇÃO GLOBAL DA ESCALA
+// ============================================
+function evaluateSchedule(schedule, baseDayRequired, baseNightRequired, openTime, closeTime) {
+  let score = 0;
+  let totalSlots = 0;
+  let filledSlots = 0;
+  let emptyShifts = 0;
+  let totalHours = 0;
+  const employeeHours = {};
+  const dayCoverage = {};
+
+  weekDays.forEach(day => {
+    const dayShift = schedule[day.key].day;
+    const nightShift = schedule[day.key].night;
+
+    totalSlots += baseDayRequired + baseNightRequired;
+    filledSlots += dayShift.length + nightShift.length;
+
+    if (dayShift.length === 0) emptyShifts++;
+    if (nightShift.length === 0) emptyShifts++;
+
+    // Calcular cobertura por dia
+    const dayCoverageRatio = dayShift.length / baseDayRequired;
+    const nightCoverageRatio = nightShift.length / baseNightRequired;
+    dayCoverage[day.key] = {
+      day: dayCoverageRatio,
+      night: nightCoverageRatio,
+      total: (dayShift.length + nightShift.length) / (baseDayRequired + baseNightRequired)
+    };
+
+    // Calcular horas por colaborador
+    [...dayShift, ...nightShift].forEach(person => {
+      const hours = person.assignedDuration || 7;
+      totalHours += hours;
+      employeeHours[person.name] = (employeeHours[person.name] || 0) + hours;
+    });
+  });
+
+  // Pontuação por cobertura
+  const coveragePercentage = (filledSlots / totalSlots) * 100;
+  score += coveragePercentage * SCHEDULE_WEIGHTS.coverage;
+
+  // Penalização por vagas vazias
+  const unfilledSlots = totalSlots - filledSlots;
+  score += unfilledSlots * SCHEDULE_WEIGHTS.unfilledSlots;
+
+  // NOVA: Penalização por desequilíbrio entre dias
+  const coverageValues = Object.values(dayCoverage).map(d => d.total);
+  if (coverageValues.length > 0) {
+    const avgCoverage = coverageValues.reduce((sum, v) => sum + v, 0) / coverageValues.length;
+    const variance = coverageValues.reduce((sum, v) => sum + Math.pow(v - avgCoverage, 2), 0) / coverageValues.length;
+    const stdDev = Math.sqrt(variance);
+    // Penalização forte por desequilíbrio entre dias
+    score -= stdDev * SCHEDULE_WEIGHTS.fairness * 5;
+  }
+
+  // Pontuação por equilíbrio de horas dos colaboradores
+  const hoursArray = Object.values(employeeHours);
+  if (hoursArray.length > 0) {
+    const avgHours = totalHours / hoursArray.length;
+    const variance = hoursArray.reduce((sum, h) => sum + Math.pow(h - avgHours, 2), 0) / hoursArray.length;
+    score -= Math.sqrt(variance) * SCHEDULE_WEIGHTS.fairness;
+  }
+
+  // Penalização por turnos sem cobertura
+  score += emptyShifts * SCHEDULE_WEIGHTS.unfilledSlots * 2;
+
+  return { score, coveragePercentage, filledSlots, totalSlots, emptyShifts, totalHours, employeeHours, dayCoverage };
+}
+
+// ============================================
+// CLONAGEM DE ESTADO
+// ============================================
+function cloneSchedule(schedule) {
+  const cloned = {};
+  Object.keys(schedule).forEach(dayKey => {
+    cloned[dayKey] = {
+      day: schedule[dayKey].day.map(p => ({ ...p })),
+      night: schedule[dayKey].night.map(p => ({ ...p }))
+    };
+  });
+  return cloned;
+}
+
+function cloneAssignedHours(assignedHours) {
+  const cloned = new Map();
+  assignedHours.forEach((value, key) => {
+    cloned.set(key, value);
+  });
+  return cloned;
+}
+
+// ============================================
+// VALIDAÇÃO DE INTEGRIDADE
+// ============================================
+function validateScheduleIntegrity(schedule, assignedHours, employees, openTime, closeTime) {
+  const errors = [];
+  const warnings = [];
+
+  // Verificar duplicações no mesmo dia
+  weekDays.forEach(day => {
+    const dayShift = schedule[day.key].day;
+    const nightShift = schedule[day.key].night;
+    const allNames = [...dayShift, ...nightShift].map(p => p.name);
+
+    const duplicates = allNames.filter((name, index) => allNames.indexOf(name) !== index);
+    if (duplicates.length > 0) {
+      errors.push(`${day.label}: Colaborador duplicado no mesmo dia: ${duplicates.join(", ")}`);
+    }
+  });
+
+  // Verificar consistência de horas
+  const calculatedHours = {};
+  weekDays.forEach(day => {
+    [...schedule[day.key].day, ...schedule[day.key].night].forEach(person => {
+      calculatedHours[person.name] = (calculatedHours[person.name] || 0) + (person.assignedDuration || 7);
+    });
+  });
+
+  Object.keys(calculatedHours).forEach(name => {
+    const assigned = assignedHours.get(name) || 0;
+    if (Math.abs(calculatedHours[name] - assigned) > 0.1) {
+      errors.push(`Inconsistência de horas para ${name}: escala=${calculatedHours[name]}, assignedHours=${assigned}`);
+    }
+  });
+
+  // Verificar limites de horas
+  Object.keys(calculatedHours).forEach(name => {
+    const emp = employees.find(e => e.name === name);
+    if (emp && calculatedHours[name] > emp.maxHours) {
+      errors.push(`${name} excede maxHours: ${calculatedHours[name]} > ${emp.maxHours}`);
+    }
+  });
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+function durationBetweenTimes(start, end) {
+  return Math.max(0.5, (normalizeEndMinutes(start, end) - timeToMinutes(start)) / 60);
+}
+
+function recalculateAssignedHoursFromSchedule(schedule) {
+  assignedHours.clear();
+  if (!schedule) return;
+
+  weekDays.forEach((day) => {
+    ["day", "night"].forEach((shift) => {
+      schedule[day.key][shift].forEach((person) => {
+        assignedHours.set(person.name, (assignedHours.get(person.name) || 0) + (person.assignedDuration || 0));
+      });
+    });
+  });
+}
+
+// ============================================
+// FUNÇÃO PRINCIPAL DE GERAÇÃO DE ESCALA (REFATORADA)
+// ============================================
 function generateSchedule() {
   const grid = document.querySelector("#schedule-grid");
   if (!grid) return;
@@ -675,68 +1432,84 @@ function generateSchedule() {
   const baseDayRequired = Number(dayReqInput?.value || 3);
   const baseNightRequired = Number(nightReqInput?.value || 3);
 
-  let conflicts = 0;
-  let totalRequired = 0;
-  let totalAssigned = 0;
-
   assignedHours.clear();
   grid.innerHTML = "";
-
   grid.className = `schedule-grid mode-${currentViewMode}`;
 
-  const daysToRender = currentViewMode === "daily" 
-    ? weekDays.filter(d => d.key === selectedDayKey) 
+  const daysToRender = currentViewMode === "daily"
+    ? weekDays.filter(d => d.key === selectedDayKey)
     : weekDays;
 
-  // Criar lista de todas as vagas da semana
-  const allSlots = [];
-  weekDays.forEach((day) => {
-    const dayRequired = baseDayRequired;
-    const nightRequired = baseNightRequired;
-    totalRequired += (dayRequired + nightRequired);
-
-    // Adicionar vagas de dia
-    for (let i = 0; i < dayRequired; i++) {
-      allSlots.push({ day: day.key, shift: "day", priority: day.sales });
+  // PASSO 1: Validar configurações
+  const configValidation = validateConfiguration(employees, baseDayRequired, baseNightRequired);
+  if (!configValidation.valid) {
+    grid.innerHTML = `
+      <div class="empty-state schedule-empty">
+        <i data-lucide="users"></i>
+        <p>Adicione colaboradores para gerar a escala.</p>
+      </div>
+    `;
+    const coverageStatusEl = document.querySelector("#coverage-status");
+    if (coverageStatusEl) {
+      coverageStatusEl.textContent = "Sem colaboradores";
+      coverageStatusEl.className = "status-badge warning";
     }
-    // Adicionar vagas de noite
-    for (let i = 0; i < nightRequired; i++) {
-      allSlots.push({ day: day.key, shift: "night", priority: day.sales });
-    }
-  });
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
 
-  // Ordenar vagas por prioridade (dias com mais vendas primeiro)
-  allSlots.sort((a, b) => b.priority - a.priority);
+  // PASSO 2: Construir índices
+  const shiftCandidates = buildShiftCandidates(employees, openTime, closeTime);
+  const employeeRarity = calculateEmployeeRarity(shiftCandidates);
+  const shiftDifficulty = calculateShiftDifficulty(shiftCandidates, employeeRarity, assignedHours);
 
-  // Preencher vagas de forma global
+  // PASSO 3: Criar estrutura da escala
   const schedule = {};
   weekDays.forEach(day => {
     schedule[day.key] = { day: [], night: [] };
   });
 
-  for (const slot of allSlots) {
-    const available = employees
-      .filter((employee) => isEmployeeAvailable(employee, slot.day, slot.shift, openTime, closeTime))
-      .sort((a, b) => {
-        const hoursA = assignedHours.get(a.name) || 0;
-        const hoursB = assignedHours.get(b.name) || 0;
-        const remainingA = a.maxHours - hoursA;
-        const remainingB = b.maxHours - hoursB;
-        
-        if (remainingA !== remainingB) return remainingB - remainingA;
-        return hoursA - hoursB;
-      });
+  // PASSO 4: Atribuir cobertura mínima (1 pessoa por turno) com ordem dinâmica
+  // Em vez de ordenar por dificuldade estática, recalculamos necessidade dinamicamente
+  let shiftsNeedingCoverage = [];
+  weekDays.forEach(day => {
+    shiftsNeedingCoverage.push({ dayKey: day.key, shift: "day" });
+    shiftsNeedingCoverage.push({ dayKey: day.key, shift: "night" });
+  });
 
-    for (const employee of available) {
+  while (shiftsNeedingCoverage.length > 0) {
+    // Recalcular necessidade de cada turno
+    shiftsNeedingCoverage = shiftsNeedingCoverage.map(({ dayKey, shift }) => ({
+      dayKey,
+      shift,
+      needScore: calculateShiftNeedScore(dayKey, shift, schedule, baseDayRequired, baseNightRequired, shiftCandidates, assignedHours)
+    }));
+
+    // Ordenar por necessidade (maior necessidade primeiro)
+    shiftsNeedingCoverage.sort((a, b) => b.needScore - a.needScore);
+
+    // Processar o turno mais necessário
+    const { dayKey, shift } = shiftsNeedingCoverage.shift();
+
+    if (schedule[dayKey][shift].length > 0) continue; // Já tem alguém
+
+    const candidates = shiftCandidates[dayKey][shift];
+    for (const employee of candidates) {
       const currentHours = assignedHours.get(employee.name) || 0;
-      const details = getEmployeeShiftDetails(employee, slot.day, slot.shift, openTime, closeTime);
+      const details = getEmployeeShiftDetails(employee, dayKey, shift, openTime, closeTime);
       const duration = details.duration;
 
-      if (currentHours + duration <= employee.maxHours) {
-        schedule[slot.day][slot.shift].push({
+      // HARD CONSTRAINT: Não pode trabalhar dia e noite no mesmo dia
+      const alreadyAssignedInDay = [...schedule[dayKey].day, ...schedule[dayKey].night].some(p => p.name === employee.name);
+
+      // HARD CONSTRAINT: Não pode exceder maxHours
+      if (!alreadyAssignedInDay && currentHours + duration <= employee.maxHours) {
+        schedule[dayKey][shift].push({
           ...employee,
           assignedHoursText: details.display,
-          assignedDuration: duration
+          assignedDuration: duration,
+          assignedStart: details.start,
+          assignedEnd: details.end
         });
         assignedHours.set(employee.name, currentHours + duration);
         break;
@@ -744,71 +1517,231 @@ function generateSchedule() {
     }
   }
 
-  // Garantir pelo menos uma pessoa com 8h por dia
+  // PASSO 6: Preencher vagas restantes com ordem dinâmica baseada em necessidade
+  let totalRemainingSlots = 0;
   weekDays.forEach(day => {
-    const dayTotalHours = schedule[day.key].day.reduce((sum, p) => sum + p.assignedDuration, 0) +
-                          schedule[day.key].night.reduce((sum, p) => sum + p.assignedDuration, 0);
-    
-    // Se não tiver pelo menos 8h no dia, tentar mover alguém
-    if (dayTotalHours < 8) {
-      // Procurar dias com mais de uma pessoa e 8h+
-      for (const sourceDay of weekDays) {
-        if (sourceDay.key === day.key) continue;
-        
-        const sourceDayPeople = [...schedule[sourceDay.key].day, ...schedule[sourceDay.key].night];
-        if (sourceDayPeople.length > 1) {
-          // Encontrar alguém que possa ser movido
-          for (const person of sourceDayPeople) {
-            const isAvailable = isEmployeeAvailable(person, day.key, "day", openTime, closeTime) ||
-                               isEmployeeAvailable(person, day.key, "night", openTime, closeTime);
-            
-            if (isAvailable) {
-              // Verificar se pode ser movido
-              const currentHours = assignedHours.get(person.name) || 0;
-              const shiftToUse = isEmployeeAvailable(person, day.key, "day", openTime, closeTime) ? "day" : "night";
-              const details = getEmployeeShiftDetails(person, day.key, shiftToUse, openTime, closeTime);
-              const duration = details.duration;
-              
-              // Remover do dia original
-              const sourceShift = schedule[sourceDay.key].day.includes(person) ? "day" : "night";
-              const sourceArray = schedule[sourceDay.key][sourceShift];
-              const idx = sourceArray.findIndex(p => p.name === person.name);
-              if (idx !== -1) {
-                sourceArray.splice(idx, 1);
-                assignedHours.set(person.name, currentHours - person.assignedDuration);
-                
-                // Adicionar ao novo dia
-                if (currentHours - person.assignedDuration + duration <= person.maxHours) {
-                  schedule[day.key][shiftToUse].push({
-                    ...person,
-                    assignedHoursText: details.display,
-                    assignedDuration: duration
-                  });
-                  assignedHours.set(person.name, currentHours - person.assignedDuration + duration);
-                  break;
-                } else {
-                  // Reverter se não for possível
-                  sourceArray.push(person);
-                  assignedHours.set(person.name, currentHours);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-
-  // Renderizar a escala
-  weekDays.forEach((day) => {
     const dayRequired = baseDayRequired;
     const nightRequired = baseNightRequired;
+    const currentDayCount = schedule[day.key].day.length;
+    const currentNightCount = schedule[day.key].night.length;
+    totalRemainingSlots += Math.max(0, dayRequired - currentDayCount) + Math.max(0, nightRequired - currentNightCount);
+  });
+
+  // Enquanto houver vagas restantes
+  while (totalRemainingSlots > 0) {
+    // Calcular necessidade de todos os turnos
+    let allShifts = [];
+    weekDays.forEach(day => {
+      const dayRequired = baseDayRequired;
+      const nightRequired = baseNightRequired;
+      const currentDayCount = schedule[day.key].day.length;
+      const currentNightCount = schedule[day.key].night.length;
+
+      if (currentDayCount < dayRequired) {
+        allShifts.push({ dayKey: day.key, shift: "day" });
+      }
+      if (currentNightCount < nightRequired) {
+        allShifts.push({ dayKey: day.key, shift: "night" });
+      }
+    });
+
+    // Recalcular necessidade e ordenar
+    allShifts = allShifts.map(({ dayKey, shift }) => ({
+      dayKey,
+      shift,
+      needScore: calculateShiftNeedScore(dayKey, shift, schedule, baseDayRequired, baseNightRequired, shiftCandidates, assignedHours)
+    })).sort((a, b) => b.needScore - a.needScore);
+
+    if (allShifts.length === 0) break; // Não há mais vagas para preencher
+
+    // Processar o turno mais necessário
+    const { dayKey, shift } = allShifts[0];
+    const required = shift === "day" ? baseDayRequired : baseNightRequired;
+    const currentCount = schedule[dayKey][shift].length;
+
+    if (currentCount >= required) {
+      totalRemainingSlots--;
+      continue;
+    }
+
+    const candidates = shiftCandidates[dayKey][shift];
+    const shiftNeedScore = calculateShiftNeedScore(dayKey, shift, schedule, baseDayRequired, baseNightRequired, shiftCandidates, assignedHours);
+
+    const scoredCandidates = candidates.map(emp => ({
+      emp,
+      score: calculateAssignmentScore(emp, dayKey, shift, schedule, assignedHours, employeeRarity, shiftDifficulty, shiftNeedScore, shiftCandidates, openTime, closeTime)
+    })).sort((a, b) => b.score - a.score);
+
+    for (const { emp } of scoredCandidates) {
+      const currentHours = assignedHours.get(emp.name) || 0;
+      const details = getEmployeeShiftDetails(emp, dayKey, shift, openTime, closeTime);
+      const duration = details.duration;
+
+      const alreadyAssignedInDay = [...schedule[dayKey].day, ...schedule[dayKey].night].some(p => p.name === emp.name);
+
+      if (!alreadyAssignedInDay && currentHours + duration <= emp.maxHours) {
+        schedule[dayKey][shift].push({
+          ...emp,
+          assignedHoursText: details.display,
+          assignedDuration: duration,
+          assignedStart: details.start,
+          assignedEnd: details.end
+        });
+        assignedHours.set(emp.name, currentHours + duration);
+        totalRemainingSlots--;
+        break;
+      }
+    }
+
+    // Se não conseguiu preencher, decrementar para evitar loop infinito
+    totalRemainingSlots--;
+  }
+
+  // PASSO 7: Otimização controlada (com limite de iterações)
+  let iteration = 0;
+  let improved = true;
+  while (improved && iteration < MAX_OPTIMIZATION_ITERATIONS) {
+    improved = false;
+    iteration++;
+
+    const currentScore = evaluateSchedule(schedule, baseDayRequired, baseNightRequired, openTime, closeTime);
+
+    // Tentar balancear turnos com excesso para turnos com déficit
+    weekDays.forEach(day => {
+      const dayShift = schedule[day.key].day;
+      const nightShift = schedule[day.key].night;
+
+      if (dayShift.length >= 3 || nightShift.length >= 3) {
+        for (const targetDay of weekDays) {
+          if (targetDay.key === day.key) continue;
+
+          const targetDayShift = schedule[targetDay.key].day;
+          const targetNightShift = schedule[targetDay.key].night;
+
+          // Balancear dia
+          if (dayShift.length >= 3 && targetDayShift.length === 1) {
+            for (const person of dayShift) {
+              const isAvailable = isEmployeeAvailable(person, targetDay.key, "day", openTime, closeTime);
+              const alreadyInTarget = targetDayShift.some(p => p.name === person.name);
+
+              if (isAvailable && !alreadyInTarget) {
+                const candidateSchedule = cloneSchedule(schedule);
+                const candidateHours = cloneAssignedHours(assignedHours);
+
+                // Simular movimento
+                const idx = candidateSchedule[day.key].day.findIndex(p => p.name === person.name);
+                if (idx !== -1) {
+                  candidateSchedule[day.key].day.splice(idx, 1);
+                  const currentHours = candidateHours.get(person.name) || 0;
+                  candidateHours.set(person.name, currentHours - person.assignedDuration);
+
+                  const details = getEmployeeShiftDetails(person, targetDay.key, "day", openTime, closeTime);
+                  if (currentHours - person.assignedDuration + details.duration <= person.maxHours) {
+                    candidateSchedule[targetDay.key].day.push({
+                      ...person,
+                      assignedHoursText: details.display,
+                      assignedDuration: details.duration,
+                      assignedStart: details.start,
+                      assignedEnd: details.end
+                    });
+                    candidateHours.set(person.name, currentHours - person.assignedDuration + details.duration);
+
+                    // Avaliar nova escala
+                    const newScore = evaluateSchedule(candidateSchedule, baseDayRequired, baseNightRequired, openTime, closeTime);
+                    if (newScore.score > currentScore.score) {
+                      schedule[day.key].day.splice(idx, 1);
+                      assignedHours.set(person.name, currentHours - person.assignedDuration);
+                      schedule[targetDay.key].day.push({
+                        ...person,
+                        assignedHoursText: details.display,
+                        assignedDuration: details.duration,
+                        assignedStart: details.start,
+                        assignedEnd: details.end
+                      });
+                      assignedHours.set(person.name, currentHours - person.assignedDuration + details.duration);
+                      improved = true;
+                      break;
+                    }
+                  }
+                }
+              }
+              if (improved) break;
+            }
+          }
+
+          // Balancear noite
+          if (!improved && nightShift.length >= 3 && targetNightShift.length === 1) {
+            for (const person of nightShift) {
+              const isAvailable = isEmployeeAvailable(person, targetDay.key, "night", openTime, closeTime);
+              const alreadyInTarget = targetNightShift.some(p => p.name === person.name);
+
+              if (isAvailable && !alreadyInTarget) {
+                const candidateSchedule = cloneSchedule(schedule);
+                const candidateHours = cloneAssignedHours(assignedHours);
+
+                const idx = candidateSchedule[day.key].night.findIndex(p => p.name === person.name);
+                if (idx !== -1) {
+                  candidateSchedule[day.key].night.splice(idx, 1);
+                  const currentHours = candidateHours.get(person.name) || 0;
+                  candidateHours.set(person.name, currentHours - person.assignedDuration);
+
+                  const details = getEmployeeShiftDetails(person, targetDay.key, "night", openTime, closeTime);
+                  if (currentHours - person.assignedDuration + details.duration <= person.maxHours) {
+                    candidateSchedule[targetDay.key].night.push({
+                      ...person,
+                      assignedHoursText: details.display,
+                      assignedDuration: details.duration,
+                      assignedStart: details.start,
+                      assignedEnd: details.end
+                    });
+                    candidateHours.set(person.name, currentHours - person.assignedDuration + details.duration);
+
+                    const newScore = evaluateSchedule(candidateSchedule, baseDayRequired, baseNightRequired, openTime, closeTime);
+                    if (newScore.score > currentScore.score) {
+                      schedule[day.key].night.splice(idx, 1);
+                      assignedHours.set(person.name, currentHours - person.assignedDuration);
+                      schedule[targetDay.key].night.push({
+                        ...person,
+                        assignedHoursText: details.display,
+                        assignedDuration: details.duration,
+                        assignedStart: details.start,
+                        assignedEnd: details.end
+                      });
+                      assignedHours.set(person.name, currentHours - person.assignedDuration + details.duration);
+                      improved = true;
+                      break;
+                    }
+                  }
+                }
+              }
+              if (improved) break;
+            }
+          }
+          if (improved) break;
+        }
+      }
+    });
+  }
+
+  // PASSO 8: Validar integridade
+  const integrityCheck = validateScheduleIntegrity(schedule, assignedHours, employees, openTime, closeTime);
+  if (!integrityCheck.valid) {
+    console.error("Erro de integridade:", integrityCheck.errors);
+  }
+
+  // PASSO 9: Renderizar a escala
+  currentSchedule = schedule;
+  let totalAssigned = 0;
+  let conflicts = 0;
+  let totalRequired = (baseDayRequired + baseNightRequired) * 7;
+
+  weekDays.forEach((day) => {
     const dayPeople = schedule[day.key].day;
     const nightPeople = schedule[day.key].night;
 
     totalAssigned += (dayPeople.length + nightPeople.length);
-    conflicts += Math.max(0, dayRequired - dayPeople.length);
-    conflicts += Math.max(0, nightRequired - nightPeople.length);
+    conflicts += Math.max(0, baseDayRequired - dayPeople.length);
+    conflicts += Math.max(0, baseNightRequired - nightPeople.length);
 
     if (daysToRender.some(d => d.key === day.key)) {
       const column = document.createElement("article");
@@ -818,25 +1751,39 @@ function generateSchedule() {
       column.innerHTML = `
         <div class="day-head">
           <div class="day-head-main">
-            <strong>${day.label}</strong>
+            <strong>${escapeHtml(day.label)}</strong>
             <span class="demand-pill ${salesDemand.toLowerCase()}">${salesDemand}</span>
           </div>
           <span class="day-sales-sub">${day.sales.toLocaleString("pt-PT")}€ previstos</span>
         </div>
-        ${renderShift("Dia", shiftHours("day", openTime, closeTime), dayPeople, dayRequired)}
-        ${renderShift("Noite", shiftHours("night", openTime, closeTime), nightPeople, nightRequired)}
+        ${renderShift(day.key, "day", "Dia", shiftHours("day", openTime, closeTime), dayPeople, baseDayRequired)}
+        ${renderShift(day.key, "night", "Noite", shiftHours("night", openTime, closeTime), nightPeople, baseNightRequired)}
       `;
       grid.append(column);
     }
   });
 
+  // PASSO 10: Atualizar status de cobertura
   const coverageStatusEl = document.querySelector("#coverage-status");
   if (coverageStatusEl) {
-    if (conflicts === 0) {
+    const emptyShifts = [];
+    weekDays.forEach((day) => {
+      if (schedule[day.key].day.length === 0) {
+        emptyShifts.push(`${day.label} (manhã)`);
+      }
+      if (schedule[day.key].night.length === 0) {
+        emptyShifts.push(`${day.label} (noite)`);
+      }
+    });
+
+    if (emptyShifts.length === 0 && conflicts === 0) {
       coverageStatusEl.textContent = "Cobertura Completa";
       coverageStatusEl.className = "status-badge success";
+    } else if (emptyShifts.length > 0) {
+      coverageStatusEl.textContent = `Sem cobertura em: ${emptyShifts.join(", ")}`;
+      coverageStatusEl.className = "status-badge error";
     } else {
-      coverageStatusEl.textContent = `Não foi possível ter 3 pessoas em ${conflicts} turno${conflicts > 1 ? "s" : ""} - Distribuição otimizada com equipa disponível`;
+      coverageStatusEl.textContent = `Não foi possível preencher ${conflicts} vaga${conflicts > 1 ? "s" : ""} - Distribuição otimizada`;
       coverageStatusEl.className = "status-badge warning";
     }
   }
@@ -851,21 +1798,74 @@ function getInitials(name) {
   return parts.map(part => part.slice(0, 1).toUpperCase()).join("");
 }
 
-function renderShift(name, hours, people, required) {
+function renderCurrentSchedule() {
+  const grid = document.querySelector("#schedule-grid");
+  if (!grid || !currentSchedule) return;
+
+  const openTime = document.querySelector("#open-time")?.value || "08:30";
+  const closeTime = document.querySelector("#close-time")?.value || "23:00";
+  const baseDayRequired = Number(document.querySelector("#day-required")?.value || 3);
+  const baseNightRequired = Number(document.querySelector("#night-required")?.value || 3);
+  const daysToRender = currentViewMode === "daily"
+    ? weekDays.filter((day) => day.key === selectedDayKey)
+    : weekDays;
+
+  grid.innerHTML = "";
+  grid.className = `schedule-grid mode-${currentViewMode}`;
+
+  weekDays.forEach((day) => {
+    const dayPeople = currentSchedule[day.key].day;
+    const nightPeople = currentSchedule[day.key].night;
+
+    if (daysToRender.some((item) => item.key === day.key)) {
+      const column = document.createElement("article");
+      column.className = `day-column ${day.key === selectedDayKey ? "selected" : ""}`;
+      const salesDemand = demandLabel(day.sales);
+
+      column.innerHTML = `
+        <div class="day-head">
+          <div class="day-head-main">
+            <strong>${escapeHtml(day.label)}</strong>
+            <span class="demand-pill ${salesDemand.toLowerCase()}">${salesDemand}</span>
+          </div>
+          <span class="day-sales-sub">${day.sales.toLocaleString("pt-PT")}€ previstos</span>
+        </div>
+        ${renderShift(day.key, "day", "Dia", shiftHours("day", openTime, closeTime), dayPeople, baseDayRequired)}
+        ${renderShift(day.key, "night", "Noite", shiftHours("night", openTime, closeTime), nightPeople, baseNightRequired)}
+      `;
+      grid.append(column);
+    }
+  });
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function renderShift(dayKey, shiftKey, name, hours, people, required) {
   const isWeekly = currentViewMode === "weekly";
   const chips = people
     .map((person) => {
-      const badge = getRoleBadgeClass(person.role);
+      const roles = splitRoles(person.role);
+      const roleBadges = roles
+        .map((role) => `<span class="chip-role ${escapeHtml(getRoleBadgeClass(role))}">${escapeHtml(role)}</span>`)
+        .join("");
       const hoursText = person.assignedHoursText || hours;
       const displayName = isWeekly ? getInitials(person.name) : person.name;
+      const [fallbackStart, fallbackEnd] = hoursText.split("-");
+      const start = person.assignedStart || fallbackStart || "";
+      const end = person.assignedEnd || fallbackEnd || "";
       return `
-        <div class="person-chip" title="${person.name} (${person.role}) · ${hoursText}">
+          <div class="person-chip" title="${escapeHtml(person.name)} (${escapeHtml(roleLabel(person.role))}) · ${escapeHtml(hoursText)}">
           <div class="chip-main-row">
-            <span class="chip-avatar">${person.name.slice(0, 1).toUpperCase()}</span>
-            <span class="chip-name">${displayName}</span>
-            <span class="chip-role ${badge}">${person.role}</span>
+            <span class="chip-avatar">${escapeHtml(person.name.slice(0, 1).toUpperCase())}</span>
+            <span class="chip-name">${escapeHtml(displayName)}</span>
+            <span class="chip-roles">${roleBadges || `<span class="chip-role ${escapeHtml(getRoleBadgeClass(person.role))}">${escapeHtml(roleLabel(person.role))}</span>`}</span>
           </div>
-          <div class="chip-hours-badge">${hoursText}</div>
+          <div class="chip-edit-hours">
+            <input type="time" value="${escapeHtml(start)}" data-schedule-start="${escapeHtml(person.id)}" data-day="${escapeHtml(dayKey)}" data-shift="${escapeHtml(shiftKey)}" aria-label="Entrada de ${escapeHtml(person.name)}">
+            <span>até</span>
+            <input type="time" value="${escapeHtml(end)}" data-schedule-end="${escapeHtml(person.id)}" data-day="${escapeHtml(dayKey)}" data-shift="${escapeHtml(shiftKey)}" aria-label="Saída de ${escapeHtml(person.name)}">
+          </div>
+          <div class="chip-hours-badge">${escapeHtml(hoursText)} · ${(person.assignedDuration || durationBetweenTimes(start, end)).toFixed(1)}h</div>
         </div>
       `;
     })
@@ -878,8 +1878,8 @@ function renderShift(name, hours, people, required) {
   return `
     <div class="shift">
       <div class="shift-title">
-        <span class="shift-name-tag">${name}</span>
-        <span class="shift-meta-tag">${hours} · ${people.length}/${required}</span>
+        <span class="shift-name-tag">${escapeHtml(name)}</span>
+        <span class="shift-meta-tag">${escapeHtml(hours)} · ${people.length}/${required}</span>
       </div>
       <div class="shift-chips-list">
         ${chips}${missing}
@@ -899,7 +1899,7 @@ function renderStatistics() {
   let totalRequired = (dayReq + nightReq) * 7;
   let totalAssigned = 0;
   let totalAvailableSlots = 0;
-  const roleHoursMap = { Sala: 0, Cozinha: 0, Bar: 0, Caixa: 0, Apoio: 0 };
+  const roleHoursMap = {};
 
   // Recalculate full week assignment and role hours
   assignedHours.clear();
@@ -913,10 +1913,11 @@ function renderStatistics() {
     conflicts += Math.max(0, nightReq - nightPeople.length);
 
     [...dayPeople, ...nightPeople].forEach((person) => {
-      const role = person.role || "Sala";
-      if (roleHoursMap[role] !== undefined) {
-        roleHoursMap[role] += (person.assignedDuration || 7);
-      }
+      const roles = splitRoles(person.role);
+      const roleHours = (person.assignedDuration || 7) / Math.max(1, roles.length);
+      (roles.length ? roles : ["Sem cargo"]).forEach((role) => {
+        roleHoursMap[role] = (roleHoursMap[role] || 0) + roleHours;
+      });
     });
 
     employees.forEach((emp) => {
@@ -961,7 +1962,7 @@ function renderStatistics() {
       row.className = "role-stat-row";
       row.innerHTML = `
         <div class="role-stat-info">
-          <span class="role-badge ${badge}">${role}</span>
+          <span class="role-badge ${escapeHtml(badge)}">${escapeHtml(role)}</span>
           <strong>${hours.toFixed(1)}h (${pct}%)</strong>
         </div>
         <div class="role-stat-bar-bg">
@@ -973,19 +1974,50 @@ function renderStatistics() {
   }
 }
 
+function handleScheduleTimeEdit(event) {
+  const input = event.target.closest("[data-schedule-start], [data-schedule-end]");
+  if (!input || !currentSchedule) return;
+
+  const dayKey = input.dataset.day;
+  const shiftKey = input.dataset.shift;
+  const employeeId = input.dataset.scheduleStart || input.dataset.scheduleEnd;
+  const person = currentSchedule[dayKey]?.[shiftKey]?.find((item) => String(item.id) === String(employeeId));
+  if (!person) return;
+
+  const chip = input.closest(".person-chip");
+  const startInput = chip?.querySelector("[data-schedule-start]");
+  const endInput = chip?.querySelector("[data-schedule-end]");
+  const start = startInput?.value || person.assignedStart || "09:00";
+  const end = endInput?.value || person.assignedEnd || "17:00";
+  const duration = durationBetweenTimes(start, end);
+
+  person.assignedStart = start;
+  person.assignedEnd = end;
+  person.assignedDuration = duration;
+  person.assignedHoursText = `${start}-${end}`;
+  recalculateAssignedHoursFromSchedule(currentSchedule);
+
+  const badge = chip?.querySelector(".chip-hours-badge");
+  if (badge) badge.textContent = `${person.assignedHoursText} · ${duration.toFixed(1)}h`;
+}
+
 // View Mode Toggle Handler
 document.querySelectorAll("#view-mode-toggle .view-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll("#view-mode-toggle .view-btn").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     currentViewMode = btn.dataset.view;
-    
+
     const selectorBar = document.querySelector("#mobile-day-selector");
     if (selectorBar) {
       selectorBar.style.display = currentViewMode === "daily" ? "flex" : "none";
     }
-    
-    generateSchedule();
+
+    if (currentSchedule) {
+      renderCurrentSchedule();
+    } else {
+      generateSchedule();
+    }
   });
 });
 
@@ -1000,6 +2032,7 @@ document.querySelectorAll(".dock-item").forEach((link) => {
 
 // Event Listeners Setup
 document.querySelector("#generate-schedule")?.addEventListener("click", generateSchedule);
+document.querySelector("#clear-schedule")?.addEventListener("click", clearSchedule);
 document.querySelector("#add-employee")?.addEventListener("click", () => openEmployeeModal());
 document.querySelector("#save-sales-week")?.addEventListener("click", registerSalesWeek);
 document.querySelector("#apply-sales-suggestion")?.addEventListener("click", applySalesSuggestion);
@@ -1009,6 +2042,7 @@ document.querySelector("#logout-button")?.addEventListener("click", logout);
 document.querySelector("#modal-close")?.addEventListener("click", closeEmployeeModal);
 document.querySelector("#modal-cancel")?.addEventListener("click", closeEmployeeModal);
 document.querySelector("#employee-form")?.addEventListener("submit", handleEmployeeFormSubmit);
+document.querySelector("#schedule-grid")?.addEventListener("input", handleScheduleTimeEdit);
 
 // Rule input changes update schedule & stats in real time
 document.querySelector("#open-time")?.addEventListener("input", () => { generateSchedule(); renderStatistics(); });
@@ -1024,14 +2058,30 @@ document.querySelector("#team-grid")?.addEventListener("click", async (event) =>
     if (!employee) return;
 
     if (confirm(`Tem a certeza que deseja remover ${employee.name}?`)) {
+      if (USE_LOCAL_DATA) {
+        employees = employees.filter((item) => String(item.id) !== String(employee.id));
+        writeLocalJson(LOCAL_EMPLOYEES_KEY, employees);
+        renderTeam();
+        generateSchedule();
+        renderStatistics();
+        return;
+      }
+
       try {
-        const response = await apiFetch(`/employees?id=${employee.id}`, { method: "DELETE" });
+        const response = await apiFetch(`/employees?id=${encodeURIComponent(employee.id)}`, { method: "DELETE" });
         if (response.ok) {
           await loadEmployees();
+          return;
         }
       } catch (err) {
         console.error("Erro ao remover colaborador:", err);
       }
+
+      employees = employees.filter((item) => String(item.id) !== String(employee.id));
+      writeLocalJson(LOCAL_EMPLOYEES_KEY, employees);
+      renderTeam();
+      generateSchedule();
+      renderStatistics();
     }
     return;
   }
@@ -1064,9 +2114,7 @@ document.querySelector("#team-grid")?.addEventListener("click", async (event) =>
   renderTeam();
   renderMobileDaySelector();
   generateSchedule();
-  await updateAuthView();
-
-  if (await isLoggedIn()) {
+  if (await updateAuthView()) {
     await loadEmployees();
     await loadSalesHistory();
   }

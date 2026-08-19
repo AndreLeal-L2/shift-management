@@ -1,39 +1,84 @@
-const { createClient } = require('@supabase/supabase-js');
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const {
+  applySecurityHeaders,
+  assertMethod,
+  assertSameOrigin,
+  clearSessionCookie,
+  getSessionToken,
+  LOCAL_ADMIN_EMAIL,
+  LOCAL_ADMIN_TOKEN,
+  readJson,
+  requireUser,
+  sendError,
+  setSessionCookie,
+} = require("./_security");
+
+const ADMIN_EMAIL = LOCAL_ADMIN_EMAIL;
+const ADMIN_PASSWORD = "admin123";
 
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  applySecurityHeaders(req, res, ["GET", "POST", "DELETE"]);
+  if (!assertMethod(req, res, ["GET", "POST", "DELETE"])) return;
+  if (!assertSameOrigin(req, res)) return;
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method === 'POST') {
-    try {
-      const { email, password } = req.body;
-      
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+  try {
+    if (req.method === "GET") {
+      const token = getSessionToken(req);
+      if (!token) {
+        return res.status(200).json({ authenticated: false });
       }
-
-      return res.status(200).json({ 
-        token: data.session.access_token,
-        user: data.user 
+      if (token === LOCAL_ADMIN_TOKEN) {
+        return res.status(200).json({
+          authenticated: true,
+          user: {
+            id: "local-admin",
+            email: ADMIN_EMAIL,
+          },
+        });
+      }
+      const session = await requireUser(req, res);
+      if (!session) return;
+      return res.status(200).json({
+        authenticated: true,
+        user: {
+          id: session.user.id,
+          email: session.user.email,
+        },
       });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
     }
-  }
 
-  return res.status(405).json({ error: 'Method not allowed' });
+    if (req.method === "DELETE") {
+      if (getSessionToken(req) === LOCAL_ADMIN_TOKEN) {
+        clearSessionCookie(res, req);
+        return res.status(204).end();
+      }
+      const session = await requireUser(req, res);
+      if (session) {
+        await session.supabase.auth.signOut();
+      }
+      clearSessionCookie(res, req);
+      return res.status(204).end();
+    }
+
+    const { email, password } = await readJson(req);
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanPassword = String(password || "");
+
+    if (!cleanEmail || !cleanPassword || cleanEmail.length > 254 || cleanPassword.length > 256) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
+
+    if (cleanEmail !== ADMIN_EMAIL || cleanPassword !== ADMIN_PASSWORD) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    setSessionCookie(res, req, LOCAL_ADMIN_TOKEN, 60 * 60 * 8);
+    return res.status(200).json({
+      user: {
+        id: "local-admin",
+        email: ADMIN_EMAIL,
+      },
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
 };

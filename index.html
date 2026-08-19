@@ -2,7 +2,7 @@
 <html lang="pt-PT">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Shifts - Gestão de Escalas</title>
     <link rel="icon" href="https://cdn.prod.website-files.com/68f0d42a98b7319de2d5a54f/6923fde7e3002b9cae86adc4_relleno-favicon%20(2).png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -12,7 +12,6 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   </head>
   <body>
     <!-- Ecrã de Autenticação -->
@@ -26,16 +25,16 @@
           />
           <p class="eyebrow">Acesso Reservado</p>
         </div>
-        <h1 id="login-title">RellenoShifts</h1>
+        <h1 id="login-title"></h1>
 
         <label>
           Correio Eletrónico
-          <input id="login-email" type="email" autocomplete="email" placeholder="gestao@relleno.pt" value="" required />
+          <input id="login-email" type="email" autocomplete="email" placeholder="admin@relleno.pt" value="admin@relleno.pt" required />
         </label>
         
         <label>
           Palavra-passe
-          <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" value="" required />
+          <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" value="admin123" required />
         </label>
         
         <p class="login-error" id="login-error" role="alert"></p>
@@ -112,6 +111,11 @@
               <button class="view-btn active" data-view="daily" type="button">Dia</button>
               <button class="view-btn" data-view="weekly" type="button">Semana</button>
             </div>
+
+            <button class="secondary-action" id="clear-schedule" type="button">
+              <i data-lucide="trash-2"></i>
+              Limpar Escala
+            </button>
 
             <button class="primary-action" id="generate-schedule" type="button">
               <i data-lucide="wand-sparkles"></i>
@@ -305,14 +309,8 @@
               <input type="text" id="emp-name" required placeholder="Ex: Maria Santos" />
             </label>
             <label>
-              Cargo / Função
-              <select id="emp-role" required>
-                <option value="Sala">Sala</option>
-                <option value="Cozinha">Cozinha</option>
-                <option value="Bar">Bar</option>
-                <option value="Caixa">Caixa</option>
-                <option value="Apoio">Apoio</option>
-              </select>
+              Cargos / Funções
+              <input type="text" id="emp-role" required placeholder="Ex: Cozinha, Caixa, Sala" maxlength="160" />
             </label>
           </div>
           <div class="form-row">

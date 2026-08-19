@@ -184,9 +184,9 @@ i[data-lucide] {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 16px;
-  flex-direction: row;
+  flex-direction: column;
 }
 
 .hero-logo-large {
@@ -196,14 +196,13 @@ i[data-lucide] {
 }
 
 .hero-logo-tag {
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 999px;
-  padding: 4px 14px;
-  font-size: 0.85rem;
+  padding: 0;
+  font-size: 0.9rem;
   font-weight: 900;
   letter-spacing: 0.12em;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--white);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.76);
+  text-transform: uppercase;
 }
 
 .eyebrow {
@@ -641,7 +640,7 @@ input:focus, select:focus {
 .day-column {
   min-width: 140px;
   width: 100%;
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(18, 18, 18, 0.88);
   overflow: hidden;
   box-sizing: border-box;
 }
@@ -705,7 +704,7 @@ input:focus, select:focus {
   flex-direction: column;
   min-height: 160px;
   gap: 10px;
-  padding: 12px;
+  padding: 14px 12px;
   border-bottom: 1px solid var(--line);
   overflow: hidden;
   box-sizing: border-box;
@@ -755,11 +754,11 @@ input:focus, select:focus {
 .person-chip {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
-  padding: 7px 9px;
-  background: rgba(255, 255, 255, 0.05);
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 9px;
+  background: rgba(255, 255, 255, 0.045);
   color: var(--white);
   font-size: 0.8rem;
   font-weight: 800;
@@ -774,9 +773,9 @@ input:focus, select:focus {
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  color: var(--red);
+  color: rgba(255, 255, 255, 0.5);
   border-style: dashed;
-  background: rgba(255, 155, 155, 0.05);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .chip-main-row {
@@ -788,15 +787,24 @@ input:focus, select:focus {
   overflow: hidden;
 }
 
+.chip-roles {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
 .chip-avatar {
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   border-radius: 50%;
-  background: var(--white);
-  color: var(--ink);
-  font-size: 0.68rem;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111111;
+  font-size: 0.66rem;
   font-weight: 900;
   flex: 0 0 auto;
 }
@@ -812,8 +820,8 @@ input:focus, select:focus {
 .role-badge {
   font-size: 0.64rem;
   font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 999px;
+  padding: 2px 7px;
+  border-radius: 4px;
   flex: 0 0 auto;
 }
 
@@ -823,12 +831,35 @@ input:focus, select:focus {
   align-self: flex-start;
   font-size: 0.68rem;
   font-weight: 900;
-  color: #9bffcb;
-  background: rgba(155, 255, 203, 0.12);
-  padding: 2px 7px;
+  color: rgba(255, 255, 255, 0.76);
+  background: transparent;
+  padding: 0;
   border-radius: 4px;
-  border: 1px solid rgba(155, 255, 203, 0.25);
-  letter-spacing: 0.02em;
+  border: 0;
+  letter-spacing: 0;
+}
+
+.chip-edit-hours {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.chip-edit-hours input[type="time"] {
+  min-height: 34px;
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 0 7px;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.chip-edit-hours span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
 }
 
 .chip-role,
@@ -836,19 +867,17 @@ input:focus, select:focus {
   font-size: 0.68rem;
   font-weight: 800;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: 4px;
 }
 
-.badge-sala { background: rgba(255, 255, 255, 0.15); color: var(--white); border: 1px solid rgba(255, 255, 255, 0.3); }
-.badge-cozinha { background: rgba(255, 217, 143, 0.15); color: var(--amber); border: 1px solid rgba(255, 217, 143, 0.3); }
-.badge-bar { background: rgba(155, 220, 255, 0.15); color: #9bdaff; border: 1px solid rgba(155, 220, 255, 0.3); }
-.badge-caixa { background: rgba(155, 255, 203, 0.15); color: var(--green); border: 1px solid rgba(155, 255, 203, 0.3); }
-.badge-apoio { background: rgba(255, 255, 255, 0.1); color: var(--muted); border: 1px solid rgba(255, 255, 255, 0.2); }
+.badge-cozinha { background: rgba(255, 255, 255, 0.08); color: rgba(255, 229, 178, 0.9); border: 1px solid rgba(255, 229, 178, 0.16); }
+.badge-caixa { background: rgba(255, 255, 255, 0.08); color: rgba(189, 225, 210, 0.92); border: 1px solid rgba(189, 225, 210, 0.16); }
+.badge-gerente { background: rgba(255, 255, 255, 0.08); color: rgba(223, 218, 232, 0.92); border: 1px solid rgba(223, 218, 232, 0.16); }
 
 .person-chip.missing {
-  color: var(--red);
+  color: rgba(255, 255, 255, 0.5);
   border-style: dashed;
-  background: rgba(255, 155, 155, 0.05);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .demand {
@@ -921,6 +950,7 @@ input:focus, select:focus {
 .role-group {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 2px;
 }
@@ -985,6 +1015,10 @@ input:focus, select:focus {
   background: rgba(255, 255, 255, 0.02);
   color: var(--muted);
   text-align: center;
+}
+
+.schedule-empty {
+  min-height: 260px;
 }
 
 .empty-state i {
@@ -1090,8 +1124,8 @@ input:focus, select:focus {
 
 .status-badge {
   display: inline-flex;
-  padding: 4px 10px;
-  border-radius: 999px;
+  padding: 5px 9px;
+  border-radius: 5px;
   font-size: 0.7rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -1104,9 +1138,15 @@ input:focus, select:focus {
 }
 
 .status-badge.warning {
-  background: rgba(255, 217, 143, 0.15);
-  color: var(--amber);
-  border: 1px solid rgba(255, 217, 143, 0.3);
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.status-badge.error {
+  background: rgba(255, 155, 155, 0.15);
+  color: var(--red);
+  border: 1px solid rgba(255, 155, 155, 0.3);
 }
 
 /* Login Card */
@@ -1134,11 +1174,18 @@ input:focus, select:focus {
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
 }
 
+.login-brand {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
 .relleno-login-logo {
-  height: 36px;
+  height: 50px;
   width: auto;
   margin-bottom: 6px;
   display: block;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .login-card h1 {
@@ -1296,8 +1343,7 @@ input:focus, select:focus {
 }
 
 .custom-time-inputs {
-  display: flex;
-  align-items: center;
+  display: grid;
   gap: 8px;
   margin-top: 4px;
   padding: 8px 10px;
@@ -1315,6 +1361,18 @@ input:focus, select:focus {
   padding: 0 6px;
   font-size: 0.8rem;
   width: 105px;
+}
+
+.availability-interval-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.remove-interval:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
 }
 
 .custom-time-inputs span {
@@ -1370,12 +1428,21 @@ input:focus, select:focus {
 }
 
 @media (max-width: 760px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .app-shell {
-    padding: 20px 14px calc(130px + env(safe-area-inset-bottom, 20px));
+    width: 100%;
+    padding: 18px clamp(14px, 4vw, 22px) calc(118px + env(safe-area-inset-bottom, 20px));
   }
 
   .topbar {
-    justify-content: space-between;
+    justify-content: flex-end;
+    margin-bottom: 8px;
   }
 
   .relleno-brand-logo {
@@ -1388,9 +1455,11 @@ input:focus, select:focus {
   }
 
   .logout-action {
-    min-height: 38px;
-    padding: 0 14px;
-    font-size: 0.8rem;
+    min-height: 36px;
+    min-width: 0;
+    flex: 0 0 auto;
+    padding: 0 13px;
+    font-size: 0.76rem;
   }
 
   /* iOS Auto Zoom Prevention */
@@ -1404,7 +1473,7 @@ input:focus, select:focus {
     align-items: center;
     justify-content: center;
     min-height: auto;
-    padding: 12px 0 20px;
+    padding: 10px 0 34px;
   }
 
   .stage::before {
@@ -1418,19 +1487,26 @@ input:focus, select:focus {
   }
 
   .hero-logo-large {
-    width: min(280px, 80vw);
+    width: min(230px, 72vw);
     height: auto;
     margin: 0 auto;
   }
 
   .hero-logo-container {
-    gap: 10px;
-    margin-bottom: 10px;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .hero-logo-tag {
+    font-size: 0.76rem;
+    letter-spacing: 0.22em;
   }
 
   .hero-copy p:last-child {
-    margin-top: 10px;
-    font-size: 0.92rem;
+    max-width: 94%;
+    margin-top: 12px;
+    font-size: 0.95rem;
+    line-height: 1.42;
   }
 
   /* Completely hide floating tiles on mobile as requested */
@@ -1443,8 +1519,8 @@ input:focus, select:focus {
   .dock {
     position: fixed;
     bottom: calc(10px + env(safe-area-inset-bottom, 8px));
-    left: 10px;
-    right: 10px;
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
     transform: none;
     width: auto;
     max-width: calc(100vw - 20px);
@@ -1453,9 +1529,9 @@ input:focus, select:focus {
     grid-template-columns: repeat(5, 1fr);
     align-items: center;
     justify-items: center;
-    gap: 2px;
-    padding: 6px 4px;
-    border-radius: 999px;
+    gap: 3px;
+    padding: 7px 5px;
+    border-radius: 28px;
     background: rgba(12, 12, 12, 0.94);
     border: 1px solid rgba(255, 255, 255, 0.15);
     backdrop-filter: blur(24px);
@@ -1469,12 +1545,13 @@ input:focus, select:focus {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 5px;
     width: 100%;
-    min-height: 44px;
-    padding: 4px 2px;
-    border-radius: 999px;
-    font-size: 0.65rem;
+    min-width: 0;
+    min-height: 54px;
+    padding: 7px 2px 6px;
+    border-radius: 22px;
+    font-size: 0.66rem;
     font-weight: 800;
     color: rgba(255, 255, 255, 0.75);
     text-align: center;
@@ -1483,8 +1560,24 @@ input:focus, select:focus {
   }
 
   .dock a i {
+    display: grid;
     width: 18px;
     height: 18px;
+    place-items: center;
+    color: currentColor;
+  }
+
+  .dock a svg {
+    width: 17px;
+    height: 17px;
+    stroke-width: 2.3;
+  }
+
+  .dock a span {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .dock a.active {
@@ -1495,6 +1588,15 @@ input:focus, select:focus {
   .section-heading {
     align-items: stretch;
     flex-direction: column;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+
+  h2 {
+    max-width: 100%;
+    font-size: clamp(2.3rem, 12vw, 3.35rem);
+    line-height: 0.95;
+    overflow-wrap: anywhere;
   }
 
   .schedule-actions-bar {
@@ -1513,7 +1615,34 @@ input:focus, select:focus {
   .secondary-action {
     min-height: 44px;
     flex: 1;
-    min-width: 140px;
+    min-width: min(140px, 100%);
+    padding-inline: 14px;
+    font-size: 0.8rem;
+    white-space: normal;
+  }
+
+  .panel {
+    border-radius: 10px;
+  }
+
+  .panel-heading {
+    padding: 16px;
+  }
+
+  .rule-list,
+  .sales-list,
+  .role-hours-list {
+    padding: 16px;
+  }
+
+  label {
+    font-size: 0.72rem;
+    line-height: 1.25;
+  }
+
+  input,
+  select {
+    min-height: 48px;
   }
 
   .rule-list {
@@ -1533,8 +1662,12 @@ input:focus, select:focus {
   }
 
   .matrix-row {
-    grid-template-columns: 75px 1fr 1fr;
-    gap: 6px;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .matrix-day-name {
+    padding-top: 0;
   }
 
   .matrix-check {
@@ -1580,6 +1713,10 @@ input:focus, select:focus {
     font-size: 0.6rem;
   }
 
+  .availability-interval-row {
+    grid-template-columns: 1fr auto 1fr auto;
+  }
+
   /* Stats grid mobile */
   .stats-grid {
     grid-template-columns: 1fr;
@@ -1590,5 +1727,81 @@ input:focus, select:focus {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-shell {
+    padding-inline: 12px;
+  }
+
+  .hero-logo-large {
+    width: min(205px, 70vw);
+  }
+
+  .hero-copy p:last-child {
+    font-size: 0.88rem;
+  }
+
+  h2 {
+    font-size: clamp(2rem, 11vw, 2.7rem);
+  }
+
+  .dock {
+    left: 7px;
+    right: 7px;
+    gap: 1px;
+    padding: 6px 4px;
+  }
+
+  .dock a {
+    min-height: 50px;
+    gap: 4px;
+    font-size: 0.6rem;
+    padding-inline: 1px;
+  }
+
+  .dock a svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .schedule-actions-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .view-mode-toggle,
+  .schedule-actions-bar .primary-action,
+  .schedule-actions-bar .secondary-action {
+    width: 100%;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    padding: 18px;
+  }
+
+  .availability-interval-row,
+  .chip-edit-hours {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  .availability-interval-row .remove-interval {
+    grid-column: 1 / -1;
+    width: 100%;
+    border-radius: 6px;
+  }
+}
+
+@media (max-width: 360px) {
+  .dock a span {
+    font-size: 0.56rem;
+  }
+
+  .dock a svg {
+    width: 15px;
+    height: 15px;
   }
 }
