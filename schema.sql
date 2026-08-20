@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS sales_history (
 CREATE INDEX IF NOT EXISTS idx_employees_owner_created ON employees(owner_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_sales_history_owner_recorded ON sales_history(owner_id, recorded_at DESC);
 
+GRANT SELECT, INSERT, UPDATE, DELETE ON employees TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON sales_history TO authenticated, service_role;
+
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales_history ENABLE ROW LEVEL SECURITY;
 

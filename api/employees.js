@@ -13,14 +13,15 @@ module.exports = async (req, res) => {
   if (!assertMethod(req, res, ["GET", "POST", "PUT", "DELETE"])) return;
   if (!assertSameOrigin(req, res)) return;
 
-  const session = await requireUser(req, res);
-  if (!session) return;
-
   try {
+    const session = await requireUser(req, res);
+    if (!session) return;
+
     if (req.method === "GET") {
       const { data, error } = await session.supabase
         .from("employees")
         .select("id,name,role,max_hours,availability,created_at,updated_at")
+        .eq("owner_id", session.ownerId)
         .order("created_at", { ascending: true });
 
       if (error) throw error;
@@ -33,7 +34,7 @@ module.exports = async (req, res) => {
 
       const { data, error } = await session.supabase
         .from("employees")
-        .insert([parsed.value])
+        .insert([{ ...parsed.value, owner_id: session.ownerId }])
         .select("id,name,role,max_hours,availability,created_at,updated_at")
         .single();
 
@@ -50,6 +51,7 @@ module.exports = async (req, res) => {
         .from("employees")
         .update({ ...updates, updated_at: new Date().toISOString() })
         .eq("id", id)
+        .eq("owner_id", session.ownerId)
         .select("id,name,role,max_hours,availability,created_at,updated_at")
         .single();
 
@@ -61,7 +63,11 @@ module.exports = async (req, res) => {
     const id = String(urlObj.searchParams.get("id") || "").trim();
     if (!id) return res.status(400).json({ error: "Missing employee id" });
 
-    const { error } = await session.supabase.from("employees").delete().eq("id", id);
+    const { error } = await session.supabase
+      .from("employees")
+      .delete()
+      .eq("id", id)
+      .eq("owner_id", session.ownerId);
     if (error) throw error;
     return res.status(204).end();
   } catch (error) {

@@ -13,14 +13,15 @@ module.exports = async (req, res) => {
   if (!assertMethod(req, res, ["GET", "POST"])) return;
   if (!assertSameOrigin(req, res)) return;
 
-  const session = await requireUser(req, res);
-  if (!session) return;
-
   try {
+    const session = await requireUser(req, res);
+    if (!session) return;
+
     if (req.method === "GET") {
       const { data, error } = await session.supabase
         .from("sales_history")
         .select("id,recorded_at,sales,created_at")
+        .eq("owner_id", session.ownerId)
         .order("recorded_at", { ascending: false })
         .limit(52);
 
@@ -33,7 +34,7 @@ module.exports = async (req, res) => {
 
     const { data, error } = await session.supabase
       .from("sales_history")
-      .insert([{ recorded_at: new Date().toISOString(), sales: parsed.value }])
+      .insert([{ owner_id: session.ownerId, recorded_at: new Date().toISOString(), sales: parsed.value }])
       .select("id,recorded_at,sales,created_at")
       .single();
 

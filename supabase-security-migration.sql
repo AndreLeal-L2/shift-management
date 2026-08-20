@@ -1,5 +1,6 @@
--- This migration locks rows to their owner and removes broad authenticated access.
--- Existing rows are assigned automatically only when the project has exactly one Auth user.
+-- This migration locks rows to an owner and removes broad authenticated access.
+-- Relleno Shifts uses a single application admin, so legacy rows without owner_id
+-- are assigned to the application admin owner used by the serverless API.
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -9,27 +10,19 @@ ADD COLUMN IF NOT EXISTS owner_id UUID;
 ALTER TABLE sales_history
 ADD COLUMN IF NOT EXISTS owner_id UUID;
 
-WITH single_admin AS (
-  SELECT id
-  FROM auth.users
-  WHERE (SELECT count(*) FROM auth.users) = 1
-  LIMIT 1
+WITH app_admin AS (
+  SELECT '00000000-0000-0000-0000-000000000001'::uuid AS id
 )
 UPDATE employees
-SET owner_id = (SELECT id FROM single_admin)
-WHERE owner_id IS NULL
-  AND EXISTS (SELECT 1 FROM single_admin);
+SET owner_id = (SELECT id FROM app_admin)
+WHERE owner_id IS NULL;
 
-WITH single_admin AS (
-  SELECT id
-  FROM auth.users
-  WHERE (SELECT count(*) FROM auth.users) = 1
-  LIMIT 1
+WITH app_admin AS (
+  SELECT '00000000-0000-0000-0000-000000000001'::uuid AS id
 )
 UPDATE sales_history
-SET owner_id = (SELECT id FROM single_admin)
-WHERE owner_id IS NULL
-  AND EXISTS (SELECT 1 FROM single_admin);
+SET owner_id = (SELECT id FROM app_admin)
+WHERE owner_id IS NULL;
 
 ALTER TABLE employees
 ALTER COLUMN owner_id SET DEFAULT auth.uid();
@@ -57,6 +50,9 @@ ADD CONSTRAINT employees_max_hours_range CHECK (max_hours BETWEEN 1 AND 60) NOT 
 
 CREATE INDEX IF NOT EXISTS idx_employees_owner_created ON employees(owner_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_sales_history_owner_recorded ON sales_history(owner_id, recorded_at DESC);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON employees TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON sales_history TO authenticated, service_role;
 
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales_history ENABLE ROW LEVEL SECURITY;

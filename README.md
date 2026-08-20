@@ -57,20 +57,20 @@ Email: admin@relleno.pt
 Password: admin123
 ```
 
-Os colaboradores e historico de vendas ficam guardados localmente no browser para a aplicacao funcionar imediatamente sem depender de uma base de dados externa.
+Os colaboradores e historico de vendas ficam guardados no Supabase atraves das funcoes `/api`. Assim, qualquer dispositivo que entre com o administrador ve a mesma equipa, o mesmo historico e a mesma base operacional.
 
 ## Tecnologias
 
 - HTML, CSS e JavaScript sem framework frontend.
 - Vercel para hosting e funcoes serverless em `/api`.
-- Supabase SDK disponivel para evolucao com persistencia remota.
+- Supabase como base de dados remota para colaboradores e historico de vendas.
 - Lucide Icons para iconografia da interface.
 
 ## Desenvolvimento
 
 Requisitos:
 
-- Node.js 20 ou superior.
+- Node.js 22 ou superior.
 - npm.
 
 Instale as dependencias:
@@ -117,14 +117,20 @@ No dashboard da Vercel, use:
 
 ## Variaveis de Ambiente
 
-As variaveis abaixo existem para suporte Supabase nas funcoes API, caso a persistencia remota volte a ser usada:
+As funcoes API precisam de Supabase configurado no ambiente da Vercel:
 
 ```env
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+ADMIN_EMAIL=admin@relleno.pt
+ADMIN_PASSWORD=admin123
+ADMIN_SESSION_SECRET=change-this-long-random-secret
+ADMIN_OWNER_ID=00000000-0000-0000-0000-000000000001
 ```
 
-Na versao atual da interface, `USE_LOCAL_DATA` esta ativo em `script.js`, por isso a experiencia principal usa `localStorage`.
+`SUPABASE_SERVICE_ROLE_KEY` deve existir apenas no servidor/Vercel. Nunca coloque essa chave no browser. Tambem pode usar `SUPABASE_SECRET_KEY` em vez de `SUPABASE_SERVICE_ROLE_KEY` se o projeto ja estiver nas chaves novas da Supabase.
+
+Na primeira entrada depois de uma versao antiga, a app tenta migrar automaticamente colaboradores e historico que ainda existam no `localStorage` do browser para a base remota.
 
 ## API
 
@@ -135,6 +141,8 @@ As funcoes serverless ficam em `/api`:
 | `/api/auth` | Login administrativo. |
 | `/api/employees` | Leitura e escrita de colaboradores. |
 | `/api/sales` | Leitura e escrita de historico/previsao de vendas. |
+
+O front-end nao grava colaboradores nem vendas diretamente no browser. O `localStorage` e usado apenas para migrar dados legados criados antes da persistencia remota.
 
 ## Base de Dados
 

@@ -1,19 +1,17 @@
 const {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
   applySecurityHeaders,
   assertMethod,
   assertSameOrigin,
   clearSessionCookie,
+  createAdminSessionToken,
   getSessionToken,
-  LOCAL_ADMIN_EMAIL,
-  LOCAL_ADMIN_TOKEN,
+  isValidAdminSession,
   readJson,
-  requireUser,
   sendError,
   setSessionCookie,
 } = require("./_security");
-
-const ADMIN_EMAIL = LOCAL_ADMIN_EMAIL;
-const ADMIN_PASSWORD = "admin123";
 
 module.exports = async (req, res) => {
   applySecurityHeaders(req, res, ["GET", "POST", "DELETE"]);
@@ -23,38 +21,19 @@ module.exports = async (req, res) => {
   try {
     if (req.method === "GET") {
       const token = getSessionToken(req);
-      if (!token) {
+      if (!token || !isValidAdminSession(token)) {
         return res.status(200).json({ authenticated: false });
       }
-      if (token === LOCAL_ADMIN_TOKEN) {
-        return res.status(200).json({
-          authenticated: true,
-          user: {
-            id: "local-admin",
-            email: ADMIN_EMAIL,
-          },
-        });
-      }
-      const session = await requireUser(req, res);
-      if (!session) return;
       return res.status(200).json({
         authenticated: true,
         user: {
-          id: session.user.id,
-          email: session.user.email,
+          id: "admin",
+          email: ADMIN_EMAIL,
         },
       });
     }
 
     if (req.method === "DELETE") {
-      if (getSessionToken(req) === LOCAL_ADMIN_TOKEN) {
-        clearSessionCookie(res, req);
-        return res.status(204).end();
-      }
-      const session = await requireUser(req, res);
-      if (session) {
-        await session.supabase.auth.signOut();
-      }
       clearSessionCookie(res, req);
       return res.status(204).end();
     }
@@ -71,10 +50,10 @@ module.exports = async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    setSessionCookie(res, req, LOCAL_ADMIN_TOKEN, 60 * 60 * 8);
+    setSessionCookie(res, req, createAdminSessionToken(60 * 60 * 8), 60 * 60 * 8);
     return res.status(200).json({
       user: {
-        id: "local-admin",
+        id: "admin",
         email: ADMIN_EMAIL,
       },
     });

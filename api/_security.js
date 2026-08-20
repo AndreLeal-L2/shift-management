@@ -1,28 +1,68 @@
 const { createClient } = require("@supabase/supabase-js");
+const crypto = require("crypto");
 
 const SESSION_COOKIE = "__Host-relleno_session";
-const LOCAL_ADMIN_EMAIL = "admin@relleno.pt";
-const LOCAL_ADMIN_TOKEN = "relleno-local-admin-session";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@relleno.pt";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+const ADMIN_OWNER_ID = process.env.ADMIN_OWNER_ID || "00000000-0000-0000-0000-000000000001";
 const MAX_JSON_BYTES = 25 * 1024;
 const weekDayKeys = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"];
 
+function getSupabaseSecretKey() {
+  return (
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    ""
+  );
+}
+
 function getSupabaseConfig() {
   const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+  const supabaseKey = getSupabaseSecretKey();
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing Supabase environment variables");
+    throw new Error("Missing Supabase admin environment variables");
   }
 
   return { supabaseUrl, supabaseKey };
 }
 
-function createSupabaseClient(token) {
+function createSupabaseAdminClient() {
   const { supabaseUrl, supabaseKey } = getSupabaseConfig();
   return createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
-    global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
   });
+}
+
+function sessionSecret() {
+  return process.env.ADMIN_SESSION_SECRET || getSupabaseSecretKey() || ADMIN_PASSWORD;
+}
+
+function signSession(payload) {
+  return crypto
+    .createHmac("sha256", sessionSecret())
+    .update(payload)
+    .digest("base64url");
+}
+
+function createAdminSessionToken(expiresInSeconds = 60 * 60 * 8) {
+  const expiresAt = Math.floor(Date.now() / 1000) + Math.max(60, Number(expiresInSeconds || 0));
+  const payload = `${ADMIN_EMAIL}.${expiresAt}`;
+  return `v1.${expiresAt}.${signSession(payload)}`;
+}
+
+function isValidAdminSession(token) {
+  const parts = String(token || "").split(".");
+  if (parts.length !== 3 || parts[0] !== "v1") return false;
+
+  const expiresAt = Number(parts[1]);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) return false;
+
+  const expected = signSession(`${ADMIN_EMAIL}.${expiresAt}`);
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(parts[2]);
+  return expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
 function applySecurityHeaders(req, res, methods) {
@@ -138,28 +178,17 @@ async function readJson(req) {
 
 async function requireUser(req, res) {
   const token = getSessionToken(req);
-  if (!token) {
+  if (!token || !isValidAdminSession(token)) {
     res.status(401).json({ error: "Unauthorized" });
     return null;
   }
 
-  if (token === LOCAL_ADMIN_TOKEN) {
-    return {
-      user: { id: "local-admin", email: LOCAL_ADMIN_EMAIL },
-      token,
-      supabase: createSupabaseClient(),
-    };
-  }
-
-  const supabase = createSupabaseClient(token);
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data.user) {
-    clearSessionCookie(res, req);
-    res.status(401).json({ error: "Unauthorized" });
-    return null;
-  }
-
-  return { user: data.user, token, supabase };
+  return {
+    user: { id: ADMIN_OWNER_ID, email: ADMIN_EMAIL },
+    token,
+    ownerId: ADMIN_OWNER_ID,
+    supabase: createSupabaseAdminClient(),
+  };
 }
 
 function cleanText(value, maxLength) {
@@ -223,7 +252,7 @@ function validateEmployeePayload(body, requireId) {
 
   return {
     value: {
-      id,
+      ...(requireId ? { id } : {}),
       name,
       role,
       max_hours: Math.round(hours),
@@ -254,13 +283,16 @@ function sendError(res, error) {
 }
 
 module.exports = {
+  ADMIN_EMAIL,
+  ADMIN_OWNER_ID,
+  ADMIN_PASSWORD,
   applySecurityHeaders,
   assertMethod,
   assertSameOrigin,
   clearSessionCookie,
-  createSupabaseClient,
-  LOCAL_ADMIN_EMAIL,
-  LOCAL_ADMIN_TOKEN,
+  createAdminSessionToken,
+  createSupabaseAdminClient,
+  isValidAdminSession,
   readJson,
   requireUser,
   sendError,

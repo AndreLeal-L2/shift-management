@@ -15,10 +15,7 @@ const assignedHours = new Map();
 const API_BASE = "/api";
 const LOCAL_EMPLOYEES_KEY = "rellenoShiftsEmployees";
 const LOCAL_SALES_KEY = "rellenoShiftsSalesHistory";
-const LOCAL_AUTH_KEY = "rellenoShiftsAuthenticated";
-const ADMIN_EMAIL = "admin@relleno.pt";
-const ADMIN_PASSWORD = "admin123";
-const USE_LOCAL_DATA = true;
+const LOCAL_MIGRATION_KEY = "rellenoShiftsRemoteMigrationDone";
 const memoryStore = {};
 
 // State for active page, view mode and selected day
@@ -69,14 +66,6 @@ function escapeHtml(value) {
 }
 
 async function isLoggedIn() {
-  if (readStorageValue(LOCAL_AUTH_KEY) === "true") {
-    return true;
-  }
-
-  if (USE_LOCAL_DATA) {
-    return false;
-  }
-
   try {
     const response = await fetch(`${API_BASE}/auth`, {
       method: "GET",
@@ -115,10 +104,6 @@ function readLocalJson(key, fallback) {
   }
 }
 
-function writeLocalJson(key, value) {
-  writeStorageValue(key, JSON.stringify(value));
-}
-
 function readStorageValue(key) {
   if (Object.prototype.hasOwnProperty.call(memoryStore, key)) {
     return memoryStore[key];
@@ -139,16 +124,6 @@ function writeStorageValue(key, value) {
   try {
     if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.setItem(key, value);
-    }
-  } catch (_) {}
-}
-
-function removeStorageValue(key) {
-  delete memoryStore[key];
-
-  try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      window.localStorage.removeItem(key);
     }
   } catch (_) {}
 }
@@ -216,20 +191,6 @@ async function handleLogin(event) {
   const password = document.querySelector("#login-password").value;
   const error = document.querySelector("#login-error");
 
-  if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-    writeStorageValue(LOCAL_AUTH_KEY, "true");
-    error.textContent = "";
-    await updateAuthView();
-    await loadEmployees();
-    await loadSalesHistory();
-    return;
-  }
-
-  if (USE_LOCAL_DATA) {
-    error.textContent = "Email ou palavra-passe inválidos.";
-    return;
-  }
-
   const response = await apiFetch("/auth", {
     method: "POST",
     body: JSON.stringify({ email, password }),
@@ -242,15 +203,13 @@ async function handleLogin(event) {
 
   error.textContent = "";
   await updateAuthView();
+  await migrateLocalDataToServer();
   await loadEmployees();
   await loadSalesHistory();
 }
 
 async function logout() {
-  removeStorageValue(LOCAL_AUTH_KEY);
-  if (!USE_LOCAL_DATA) {
-    await apiFetch("/auth", { method: "DELETE" });
-  }
+  await apiFetch("/auth", { method: "DELETE" });
   await updateAuthView();
 }
 
@@ -412,41 +371,28 @@ function isEmployeeAvailable(employee, dayKey, shift, openTime = "08:30", closeT
 }
 
 async function loadSalesHistory() {
-  if (USE_LOCAL_DATA) {
-    salesHistory = readLocalJson(LOCAL_SALES_KEY, []);
+  try {
+    const response = await apiFetch("/sales");
+    if (!response.ok) throw new Error(await readApiError(response));
+
+    salesHistory = await response.json();
+    if (salesHistory.length > 0 && weekDays.every((d) => d.sales === 0)) {
+      const latestWeek = salesHistory[0];
+      if (latestWeek && latestWeek.sales) {
+        weekDays.forEach((day) => {
+          if (latestWeek.sales[day.key] !== undefined) {
+            day.sales = Number(latestWeek.sales[day.key]);
+          }
+        });
+      }
+    }
     renderSales();
     renderMobileDaySelector();
     generateSchedule();
     renderStatistics();
-    return;
-  }
-
-  try {
-    const response = await apiFetch("/sales");
-    if (response.ok) {
-      salesHistory = await response.json();
-      writeLocalJson(LOCAL_SALES_KEY, salesHistory);
-      if (salesHistory.length > 0 && weekDays.every((d) => d.sales === 0)) {
-        const latestWeek = salesHistory[0];
-        if (latestWeek && latestWeek.sales) {
-          weekDays.forEach((day) => {
-            if (latestWeek.sales[day.key] !== undefined) {
-              day.sales = Number(latestWeek.sales[day.key]);
-            }
-          });
-        }
-      }
-      renderSales();
-      renderMobileDaySelector();
-      generateSchedule();
-      renderStatistics();
-    }
   } catch (err) {
     console.error("Erro ao carregar histórico de vendas:", err);
-  }
-
-  if (!salesHistory.length) {
-    salesHistory = readLocalJson(LOCAL_SALES_KEY, []);
+    salesHistory = [];
     renderSales();
     renderMobileDaySelector();
     generateSchedule();
@@ -462,29 +408,65 @@ async function saveSalesHistory() {
     created_at: new Date().toISOString(),
   };
 
-  if (USE_LOCAL_DATA) {
-    salesHistory = [entry, ...readLocalJson(LOCAL_SALES_KEY, [])].slice(0, 52);
-    writeLocalJson(LOCAL_SALES_KEY, salesHistory);
+  const response = await apiFetch("/sales", {
+    method: "POST",
+    body: JSON.stringify({
+      sales: entry.sales
+    }),
+  });
+  if (!response.ok) throw new Error(await readApiError(response));
+  await loadSalesHistory();
+}
+
+async function migrateLocalDataToServer() {
+  if (readStorageValue(LOCAL_MIGRATION_KEY) === "true") return;
+
+  const localEmployees = readLocalJson(LOCAL_EMPLOYEES_KEY, []).map(normalizeEmployeeRecord);
+  const localSalesHistory = readLocalJson(LOCAL_SALES_KEY, []);
+  if (!localEmployees.length && !localSalesHistory.length) {
+    writeStorageValue(LOCAL_MIGRATION_KEY, "true");
     return;
   }
 
   try {
-    const response = await apiFetch("/sales", {
-      method: "POST",
-      body: JSON.stringify({
-        sales: entry.sales
-      }),
-    });
-    if (response.ok) {
-      await loadSalesHistory();
-      return;
-    }
-  } catch (err) {
-    console.error("Erro ao guardar histórico de vendas:", err);
-  }
+    const currentResponse = await apiFetch("/employees");
+    if (!currentResponse.ok) throw new Error(await readApiError(currentResponse));
 
-  salesHistory = [entry, ...readLocalJson(LOCAL_SALES_KEY, [])].slice(0, 52);
-  writeLocalJson(LOCAL_SALES_KEY, salesHistory);
+    const currentEmployees = (await currentResponse.json()).map(normalizeEmployeeRecord);
+    const existing = new Set(
+      currentEmployees.map((employee) => `${employee.name}|${employee.role}`.toLowerCase()),
+    );
+
+    for (const employee of localEmployees) {
+      const signature = `${employee.name}|${employee.role}`.toLowerCase();
+      if (existing.has(signature)) continue;
+
+      const response = await apiFetch("/employees", {
+        method: "POST",
+        body: JSON.stringify({
+          name: employee.name,
+          role: employee.role,
+          maxHours: employee.maxHours,
+          availability: employee.availability,
+        }),
+      });
+      if (!response.ok) throw new Error(await readApiError(response));
+      existing.add(signature);
+    }
+
+    for (const week of localSalesHistory) {
+      if (!week || !week.sales) continue;
+      const response = await apiFetch("/sales", {
+        method: "POST",
+        body: JSON.stringify({ sales: week.sales }),
+      });
+      if (!response.ok) throw new Error(await readApiError(response));
+    }
+
+    writeStorageValue(LOCAL_MIGRATION_KEY, "true");
+  } catch (err) {
+    console.error("Erro ao migrar dados locais para Supabase:", err);
+  }
 }
 
 function salesSuggestions() {
@@ -558,10 +540,15 @@ function renderSales() {
 }
 
 async function registerSalesWeek() {
-  await saveSalesHistory();
-  renderSales();
-  generateSchedule();
-  renderStatistics();
+  try {
+    await saveSalesHistory();
+    renderSales();
+    generateSchedule();
+    renderStatistics();
+  } catch (err) {
+    console.error("Erro ao guardar histórico de vendas:", err);
+    alert(`Erro ao guardar vendas: ${err.message}`);
+  }
 }
 
 function applySalesSuggestion() {
@@ -578,35 +565,22 @@ function applySalesSuggestion() {
 }
 
 async function loadEmployees() {
-  if (USE_LOCAL_DATA) {
-    employees = readLocalJson(LOCAL_EMPLOYEES_KEY, []).map(normalizeEmployeeRecord);
+  try {
+    const response = await apiFetch("/employees");
+    if (!response.ok) throw new Error(await readApiError(response));
+
+    const data = await response.json();
+    employees = data.map(normalizeEmployeeRecord);
     renderTeam();
     generateSchedule();
     renderStatistics();
-    return;
-  }
-
-  try {
-    const response = await apiFetch("/employees");
-    if (response.ok) {
-      const data = await response.json();
-      const remoteEmployees = data.map(normalizeEmployeeRecord);
-      const localEmployees = readLocalJson(LOCAL_EMPLOYEES_KEY, []).map(normalizeEmployeeRecord);
-      employees = remoteEmployees.length ? remoteEmployees : localEmployees;
-      writeLocalJson(LOCAL_EMPLOYEES_KEY, employees);
-      renderTeam();
-      generateSchedule();
-      renderStatistics();
-      return;
-    }
   } catch (err) {
     console.error("Erro ao carregar colaboradores:", err);
+    employees = [];
+    renderTeam();
+    generateSchedule();
+    renderStatistics();
   }
-
-  employees = readLocalJson(LOCAL_EMPLOYEES_KEY, []).map(normalizeEmployeeRecord);
-  renderTeam();
-  generateSchedule();
-  renderStatistics();
 }
 
 function renderMatrixGrid(currentAvailability = {}) {
@@ -794,59 +768,31 @@ async function handleEmployeeFormSubmit(event) {
   });
 
   const payload = { name, role, maxHours, availability };
-  const localEmployees = readLocalJson(LOCAL_EMPLOYEES_KEY, employees).map(normalizeEmployeeRecord);
-  const localRecord = normalizeEmployeeRecord({
-    ...payload,
-    id: id || localId(),
-  });
-
-  if (id) {
-    const existingIndex = localEmployees.findIndex((employee) => String(employee.id) === String(id));
-    if (existingIndex >= 0) {
-      localEmployees[existingIndex] = localRecord;
-    } else {
-      localEmployees.push(localRecord);
-    }
-  } else {
-    localEmployees.push(localRecord);
-  }
-
-  employees = localEmployees;
-  writeLocalJson(LOCAL_EMPLOYEES_KEY, employees);
-  closeEmployeeModal();
-  renderTeam();
-  generateSchedule();
-  renderStatistics();
-
-  if (USE_LOCAL_DATA) return;
-
+  const saveButton = document.querySelector("#modal-save");
+  if (saveButton) saveButton.disabled = true;
   try {
-    let response;
-    if (id) {
-      payload.id = id;
-      response = await apiFetch("/employees", {
-        method: "PUT",
-        body: JSON.stringify(payload)
-      });
-    } else {
-      response = await apiFetch("/employees", {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
-    }
+    const response = await apiFetch("/employees", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(id ? { ...payload, id } : payload)
+    });
 
-    if (response.ok) {
-      const saved = normalizeEmployeeRecord(await response.json());
-      employees = readLocalJson(LOCAL_EMPLOYEES_KEY, employees)
-        .map(normalizeEmployeeRecord)
-        .map((employee) => String(employee.id) === String(localRecord.id) ? saved : employee);
-      writeLocalJson(LOCAL_EMPLOYEES_KEY, employees);
-      return;
+    if (!response.ok) throw new Error(await readApiError(response));
+
+    const saved = normalizeEmployeeRecord(await response.json());
+    if (id) {
+      employees = employees.map((employee) => String(employee.id) === String(id) ? saved : employee);
     } else {
-      throw new Error(await readApiError(response));
+      employees = [...employees, saved];
     }
+    closeEmployeeModal();
+    renderTeam();
+    generateSchedule();
+    renderStatistics();
   } catch (err) {
     console.error("Erro ao guardar colaborador:", err);
+    alert(`Erro ao guardar colaborador: ${err.message}`);
+  } finally {
+    if (saveButton) saveButton.disabled = false;
   }
 }
 
@@ -2058,30 +2004,14 @@ document.querySelector("#team-grid")?.addEventListener("click", async (event) =>
     if (!employee) return;
 
     if (confirm(`Tem a certeza que deseja remover ${employee.name}?`)) {
-      if (USE_LOCAL_DATA) {
-        employees = employees.filter((item) => String(item.id) !== String(employee.id));
-        writeLocalJson(LOCAL_EMPLOYEES_KEY, employees);
-        renderTeam();
-        generateSchedule();
-        renderStatistics();
-        return;
-      }
-
       try {
         const response = await apiFetch(`/employees?id=${encodeURIComponent(employee.id)}`, { method: "DELETE" });
-        if (response.ok) {
-          await loadEmployees();
-          return;
-        }
+        if (!response.ok) throw new Error(await readApiError(response));
+        await loadEmployees();
       } catch (err) {
         console.error("Erro ao remover colaborador:", err);
+        alert(`Erro ao remover colaborador: ${err.message}`);
       }
-
-      employees = employees.filter((item) => String(item.id) !== String(employee.id));
-      writeLocalJson(LOCAL_EMPLOYEES_KEY, employees);
-      renderTeam();
-      generateSchedule();
-      renderStatistics();
     }
     return;
   }
@@ -2115,6 +2045,7 @@ document.querySelector("#team-grid")?.addEventListener("click", async (event) =>
   renderMobileDaySelector();
   generateSchedule();
   if (await updateAuthView()) {
+    await migrateLocalDataToServer();
     await loadEmployees();
     await loadSalesHistory();
   }
