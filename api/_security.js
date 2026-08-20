@@ -4,6 +4,8 @@ const crypto = require("crypto");
 const SESSION_COOKIE = "__Host-relleno_session";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@relleno.pt";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+const DEFAULT_SUPABASE_URL = "https://zebcriljgnwvlpgygrib.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InplYmNyaWxqZ253dmxwZ3lncmliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3ODM2NzksImV4cCI6MjEwMjM1OTY3OX0.J8wzLazYmi0KaqDkVdDYM_Vb_E7a_Umkbf9mSUnYLZk";
 const DEFAULT_ADMIN_OWNER_ID = "00000000-0000-0000-0000-000000000001";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ADMIN_OWNER_ID = UUID_RE.test(process.env.ADMIN_OWNER_ID || "")
@@ -26,12 +28,12 @@ function getSupabaseDataKey() {
     getSupabaseSecretKey() ||
     process.env.SUPABASE_ANON_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    ""
+    DEFAULT_SUPABASE_ANON_KEY
   );
 }
 
 function getSupabaseConfig() {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
   const supabaseKey = getSupabaseDataKey();
 
   if (!supabaseUrl) {
