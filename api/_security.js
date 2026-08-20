@@ -27,7 +27,9 @@ function getSupabaseDataKey() {
   return (
     getSupabaseSecretKey() ||
     process.env.SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     DEFAULT_SUPABASE_ANON_KEY
   );
 }
@@ -275,7 +277,7 @@ function validateEmployeePayload(body, requireId) {
   if (requireId && !id) return { error: "Missing employee id" };
   if (name.length < 2) return { error: "Name is required" };
   if (role.length < 2) return { error: "Role is required" };
-  if (role.length > 40) return { error: "Use cargos mais curtos: o limite atual da base de dados é 40 caracteres." };
+  if (role.length > 160) return { error: "Use cargos mais curtos: o limite é 160 caracteres." };
   if (!Number.isFinite(hours) || hours < 1 || hours > 60) return { error: "Invalid weekly hours" };
 
   return {
