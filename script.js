@@ -1709,30 +1709,9 @@ function generateSchedule() {
     }
   });
 
-  // PASSO 10: Atualizar status de cobertura
-  const coverageStatusEl = document.querySelector("#coverage-status");
-  if (coverageStatusEl) {
-    const emptyShifts = [];
-    weekDays.forEach((day) => {
-      if (schedule[day.key].day.length === 0) {
-        emptyShifts.push(`${day.label} (manhã)`);
-      }
-      if (schedule[day.key].night.length === 0) {
-        emptyShifts.push(`${day.label} (noite)`);
-      }
-    });
-
-    if (emptyShifts.length === 0 && conflicts === 0) {
-      coverageStatusEl.textContent = "Cobertura Completa";
-      coverageStatusEl.className = "status-badge success";
-    } else if (emptyShifts.length > 0) {
-      coverageStatusEl.textContent = `Sem cobertura em: ${emptyShifts.join(", ")}`;
-      coverageStatusEl.className = "status-badge error";
-    } else {
-      coverageStatusEl.textContent = `Não foi possível preencher ${conflicts} vaga${conflicts > 1 ? "s" : ""} - Distribuição otimizada`;
-      coverageStatusEl.className = "status-badge warning";
-    }
-  }
+  // PASSO 10: Atualizar status de cobertura e ícones dos controlos manuais
+  updateScheduleCoverageStatus(schedule);
+  if (window.lucide) window.lucide.createIcons();
 }
 
 function getInitials(name) {
@@ -1742,6 +1721,139 @@ function getInitials(name) {
     return parts[0].slice(0, 3).toUpperCase();
   }
   return parts.map(part => part.slice(0, 1).toUpperCase()).join("");
+}
+
+function getScheduleRequirements() {
+  return {
+    day: Number(document.querySelector("#day-required")?.value || 3),
+    night: Number(document.querySelector("#night-required")?.value || 3),
+  };
+}
+
+function updateScheduleCoverageStatus(schedule = currentSchedule) {
+  const coverageStatusEl = document.querySelector("#coverage-status");
+  if (!coverageStatusEl || !schedule) return;
+
+  const required = getScheduleRequirements();
+  const emptyShifts = [];
+  let conflicts = 0;
+
+  weekDays.forEach((day) => {
+    const dayCount = schedule[day.key]?.day?.length || 0;
+    const nightCount = schedule[day.key]?.night?.length || 0;
+
+    conflicts += Math.max(0, required.day - dayCount);
+    conflicts += Math.max(0, required.night - nightCount);
+
+    if (dayCount === 0) emptyShifts.push(`${day.label} (manhã)`);
+    if (nightCount === 0) emptyShifts.push(`${day.label} (noite)`);
+  });
+
+  if (emptyShifts.length === 0 && conflicts === 0) {
+    coverageStatusEl.textContent = "Cobertura Completa";
+    coverageStatusEl.className = "status-badge success";
+  } else if (emptyShifts.length > 0) {
+    coverageStatusEl.textContent = `Sem cobertura em: ${emptyShifts.join(", ")}`;
+    coverageStatusEl.className = "status-badge error";
+  } else {
+    coverageStatusEl.textContent = `Faltam ${conflicts} vaga${conflicts > 1 ? "s" : ""} - escala ajustável`;
+    coverageStatusEl.className = "status-badge warning";
+  }
+}
+
+function assignedEmployeeIdsForDay(dayKey) {
+  const daySchedule = currentSchedule?.[dayKey];
+  if (!daySchedule) return new Set();
+  return new Set(
+    [...daySchedule.day, ...daySchedule.night].map((person) => String(person.id)),
+  );
+}
+
+function scheduleHoursByEmployeeId(schedule = currentSchedule) {
+  const totals = new Map();
+  if (!schedule) return totals;
+
+  weekDays.forEach((day) => {
+    ["day", "night"].forEach((shift) => {
+      schedule[day.key]?.[shift]?.forEach((person) => {
+        const key = String(person.id);
+        totals.set(key, (totals.get(key) || 0) + (person.assignedDuration || 0));
+      });
+    });
+  });
+
+  return totals;
+}
+
+function scheduleAddOptions(dayKey, shiftKey) {
+  const openTime = document.querySelector("#open-time")?.value || "08:30";
+  const closeTime = document.querySelector("#close-time")?.value || "23:00";
+  const assignedToday = assignedEmployeeIdsForDay(dayKey);
+  const totals = scheduleHoursByEmployeeId();
+
+  return employees
+    .filter((employee) => !assignedToday.has(String(employee.id)))
+    .map((employee) => {
+      const details = getEmployeeShiftDetails(employee, dayKey, shiftKey, openTime, closeTime);
+      const isAvailable = isEmployeeAvailable(employee, dayKey, shiftKey, openTime, closeTime);
+      const totalAfter = (totals.get(String(employee.id)) || 0) + details.duration;
+      const warnings = [];
+      if (!isAvailable) warnings.push("fora da disponibilidade");
+      if (totalAfter > employee.maxHours) warnings.push("acima das horas");
+      const suffix = warnings.length ? ` (${warnings.join(", ")})` : "";
+      return {
+        id: String(employee.id),
+        label: `${employee.name} · ${roleLabel(employee.role)}${suffix}`,
+      };
+    });
+}
+
+function addEmployeeToSchedule(dayKey, shiftKey, employeeId) {
+  if (!currentSchedule) return;
+
+  if (!employeeId) {
+    alert("Escolha uma pessoa para adicionar ao turno.");
+    return;
+  }
+
+  const employee = employees.find((item) => String(item.id) === String(employeeId));
+  if (!employee) return;
+
+  if (assignedEmployeeIdsForDay(dayKey).has(String(employee.id))) {
+    alert("Esta pessoa já está atribuída neste dia.");
+    return;
+  }
+
+  const openTime = document.querySelector("#open-time")?.value || "08:30";
+  const closeTime = document.querySelector("#close-time")?.value || "23:00";
+  const details = getEmployeeShiftDetails(employee, dayKey, shiftKey, openTime, closeTime);
+
+  currentSchedule[dayKey][shiftKey].push({
+    ...employee,
+    assignedHoursText: details.display,
+    assignedDuration: details.duration,
+    assignedStart: details.start,
+    assignedEnd: details.end,
+  });
+
+  recalculateAssignedHoursFromSchedule(currentSchedule);
+  renderCurrentSchedule();
+  renderStatistics();
+}
+
+function removeEmployeeFromSchedule(dayKey, shiftKey, employeeId) {
+  if (!currentSchedule) return;
+
+  const shiftPeople = currentSchedule[dayKey]?.[shiftKey];
+  if (!shiftPeople) return;
+
+  currentSchedule[dayKey][shiftKey] = shiftPeople.filter(
+    (person) => String(person.id) !== String(employeeId),
+  );
+
+  recalculateAssignedHoursFromSchedule(currentSchedule);
+  renderCurrentSchedule();
+  renderStatistics();
 }
 
 function renderCurrentSchedule() {
@@ -1783,11 +1895,24 @@ function renderCurrentSchedule() {
     }
   });
 
+  updateScheduleCoverageStatus(currentSchedule);
   if (window.lucide) window.lucide.createIcons();
 }
 
 function renderShift(dayKey, shiftKey, name, hours, people, required) {
   const isWeekly = currentViewMode === "weekly";
+  const addOptions = scheduleAddOptions(dayKey, shiftKey);
+  const addControl = `
+    <div class="shift-manual-control">
+      <select data-add-schedule-person="${escapeHtml(dayKey)}:${escapeHtml(shiftKey)}" aria-label="Adicionar pessoa ao turno ${escapeHtml(name)}">
+        <option value="">Adicionar pessoa</option>
+        ${addOptions.map((option) => `<option value="${escapeHtml(option.id)}">${escapeHtml(option.label)}</option>`).join("")}
+      </select>
+      <button class="icon-btn schedule-add-btn" type="button" data-add-to-schedule="${escapeHtml(dayKey)}:${escapeHtml(shiftKey)}" aria-label="Adicionar pessoa ao turno ${escapeHtml(name)}" ${addOptions.length ? "" : "disabled"}>
+        <i data-lucide="user-plus"></i>
+      </button>
+    </div>
+  `;
   const chips = people
     .map((person) => {
       const roles = splitRoles(person.role);
@@ -1805,6 +1930,9 @@ function renderShift(dayKey, shiftKey, name, hours, people, required) {
             <span class="chip-avatar">${escapeHtml(person.name.slice(0, 1).toUpperCase())}</span>
             <span class="chip-name">${escapeHtml(displayName)}</span>
             <span class="chip-roles">${roleBadges || `<span class="chip-role ${escapeHtml(getRoleBadgeClass(person.role))}">${escapeHtml(roleLabel(person.role))}</span>`}</span>
+            <button class="icon-btn chip-remove-btn" type="button" data-remove-from-schedule="${escapeHtml(dayKey)}:${escapeHtml(shiftKey)}:${escapeHtml(person.id)}" aria-label="Remover ${escapeHtml(person.name)} deste turno">
+              <i data-lucide="user-minus"></i>
+            </button>
           </div>
           <div class="chip-edit-hours">
             <input type="time" value="${escapeHtml(start)}" data-schedule-start="${escapeHtml(person.id)}" data-day="${escapeHtml(dayKey)}" data-shift="${escapeHtml(shiftKey)}" aria-label="Entrada de ${escapeHtml(person.name)}">
@@ -1830,6 +1958,7 @@ function renderShift(dayKey, shiftKey, name, hours, people, required) {
       <div class="shift-chips-list">
         ${chips}${missing}
       </div>
+      ${addControl}
     </div>
   `;
 }
@@ -1840,6 +1969,7 @@ function renderStatistics() {
   const closeTime = document.querySelector("#close-time")?.value || "23:00";
   const dayReq = Number(document.querySelector("#day-required")?.value || 3);
   const nightReq = Number(document.querySelector("#night-required")?.value || 3);
+  const scheduleForStats = currentSchedule;
 
   let conflicts = 0;
   let totalRequired = (dayReq + nightReq) * 7;
@@ -1848,11 +1978,19 @@ function renderStatistics() {
   const roleHoursMap = {};
 
   // Recalculate full week assignment and role hours
-  assignedHours.clear();
+  if (scheduleForStats) {
+    recalculateAssignedHoursFromSchedule(scheduleForStats);
+  } else {
+    assignedHours.clear();
+  }
 
   weekDays.forEach((day) => {
-    const dayPeople = pickEmployees(day.key, "day", dayReq, openTime, closeTime);
-    const nightPeople = pickEmployees(day.key, "night", nightReq, openTime, closeTime);
+    const dayPeople = scheduleForStats
+      ? scheduleForStats[day.key].day
+      : pickEmployees(day.key, "day", dayReq, openTime, closeTime);
+    const nightPeople = scheduleForStats
+      ? scheduleForStats[day.key].night
+      : pickEmployees(day.key, "night", nightReq, openTime, closeTime);
 
     totalAssigned += (dayPeople.length + nightPeople.length);
     conflicts += Math.max(0, dayReq - dayPeople.length);
@@ -1945,6 +2083,23 @@ function handleScheduleTimeEdit(event) {
 
   const badge = chip?.querySelector(".chip-hours-badge");
   if (badge) badge.textContent = `${person.assignedHoursText} · ${duration.toFixed(1)}h`;
+  renderStatistics();
+}
+
+function handleScheduleClick(event) {
+  const removeBtn = event.target.closest("[data-remove-from-schedule]");
+  if (removeBtn) {
+    const [dayKey, shiftKey, employeeId] = removeBtn.dataset.removeFromSchedule.split(":");
+    removeEmployeeFromSchedule(dayKey, shiftKey, employeeId);
+    return;
+  }
+
+  const addBtn = event.target.closest("[data-add-to-schedule]");
+  if (addBtn) {
+    const [dayKey, shiftKey] = addBtn.dataset.addToSchedule.split(":");
+    const select = addBtn.closest(".shift")?.querySelector(`[data-add-schedule-person="${dayKey}:${shiftKey}"]`);
+    addEmployeeToSchedule(dayKey, shiftKey, select?.value || "");
+  }
 }
 
 // View Mode Toggle Handler
@@ -1989,6 +2144,7 @@ document.querySelector("#modal-close")?.addEventListener("click", closeEmployeeM
 document.querySelector("#modal-cancel")?.addEventListener("click", closeEmployeeModal);
 document.querySelector("#employee-form")?.addEventListener("submit", handleEmployeeFormSubmit);
 document.querySelector("#schedule-grid")?.addEventListener("input", handleScheduleTimeEdit);
+document.querySelector("#schedule-grid")?.addEventListener("click", handleScheduleClick);
 
 // Rule input changes update schedule & stats in real time
 document.querySelector("#open-time")?.addEventListener("input", () => { generateSchedule(); renderStatistics(); });

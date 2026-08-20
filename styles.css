@@ -787,6 +787,15 @@ input:focus, select:focus {
   overflow: hidden;
 }
 
+.chip-remove-btn {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+
 .chip-roles {
   display: flex;
   flex: 0 1 auto;
@@ -860,6 +869,39 @@ input:focus, select:focus {
   color: var(--muted);
   font-size: 0.68rem;
   font-weight: 800;
+}
+
+.shift-manual-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.shift-manual-control select {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.82);
+  padding: 0 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.shift-manual-control select option {
+  color: #111111;
+}
+
+.schedule-add-btn {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 6px;
 }
 
 .chip-role,
@@ -1694,6 +1736,12 @@ input:focus, select:focus {
     gap: 8px;
   }
 
+  .chip-remove-btn {
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+  }
+
   .chip-avatar {
     width: 28px;
     height: 28px;
@@ -1711,6 +1759,20 @@ input:focus, select:focus {
 
   .chip-hours-badge {
     font-size: 0.6rem;
+  }
+
+  .shift-manual-control {
+    grid-template-columns: minmax(0, 1fr) 38px;
+  }
+
+  .shift-manual-control select,
+  .schedule-add-btn {
+    min-height: 38px;
+  }
+
+  .schedule-add-btn {
+    width: 38px;
+    height: 38px;
   }
 
   .availability-interval-row {
