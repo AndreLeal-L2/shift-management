@@ -4,7 +4,11 @@ const crypto = require("crypto");
 const SESSION_COOKIE = "__Host-relleno_session";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@relleno.pt";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
-const ADMIN_OWNER_ID = process.env.ADMIN_OWNER_ID || "00000000-0000-0000-0000-000000000001";
+const DEFAULT_ADMIN_OWNER_ID = "00000000-0000-0000-0000-000000000001";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ADMIN_OWNER_ID = UUID_RE.test(process.env.ADMIN_OWNER_ID || "")
+  ? process.env.ADMIN_OWNER_ID
+  : DEFAULT_ADMIN_OWNER_ID;
 const MAX_JSON_BYTES = 25 * 1024;
 const weekDayKeys = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"];
 
@@ -17,12 +21,33 @@ function getSupabaseSecretKey() {
   );
 }
 
-function getSupabaseConfig() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = getSupabaseSecretKey();
+function getSupabaseDataKey() {
+  return (
+    getSupabaseSecretKey() ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    ""
+  );
+}
 
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing Supabase admin environment variables");
+function getSupabaseConfig() {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = getSupabaseDataKey();
+
+  if (!supabaseUrl) {
+    const err = new Error("Base de dados sem SUPABASE_URL configurado no servidor.");
+    err.statusCode = 503;
+    throw err;
+  }
+
+  if (!supabaseKey) {
+    const err = new Error("Base de dados sem chave Supabase configurada no servidor.");
+    err.statusCode = 503;
+    throw err;
+  }
+
+  if (!getSupabaseSecretKey()) {
+    console.warn("SUPABASE_SERVICE_ROLE_KEY não configurado; a API está a usar a chave pública/anon como fallback.");
   }
 
   return { supabaseUrl, supabaseKey };
@@ -279,7 +304,28 @@ function validateSalesPayload(body) {
 
 function sendError(res, error) {
   const status = error && error.statusCode ? error.statusCode : 500;
-  res.status(status).json({ error: status >= 500 ? "Internal server error" : error.message });
+  const message = String(error?.message || "");
+
+  if (status >= 500) {
+    console.error("API error:", {
+      code: error?.code,
+      message,
+      details: error?.details,
+      hint: error?.hint,
+    });
+  }
+
+  if (status >= 500 && (message.includes("SUPABASE_URL") || message.includes("SUPABASE_SERVICE_ROLE_KEY") || message.includes("chave Supabase"))) {
+    return res.status(status).json({ error: message });
+  }
+
+  if (status >= 500 && (message.includes("row-level security") || message.includes("permission denied") || error?.code === "42501")) {
+    return res.status(503).json({
+      error: "Base de dados sem permissões de escrita. Configure SUPABASE_SERVICE_ROLE_KEY na Vercel.",
+    });
+  }
+
+  return res.status(status).json({ error: status >= 500 ? "Erro do servidor ao comunicar com a base de dados." : message });
 }
 
 module.exports = {
