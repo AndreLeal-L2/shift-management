@@ -40,6 +40,9 @@ ALTER TABLE employees
 ADD CONSTRAINT employees_name_len CHECK (char_length(name) BETWEEN 2 AND 80) NOT VALID;
 
 ALTER TABLE employees
+DROP CONSTRAINT IF EXISTS employees_role_check;
+
+ALTER TABLE employees
 DROP CONSTRAINT IF EXISTS employees_role_len;
 
 ALTER TABLE employees

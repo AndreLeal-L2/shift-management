@@ -272,7 +272,8 @@ function validateEmployeePayload(body, requireId) {
 
   if (requireId && !id) return { error: "Missing employee id" };
   if (name.length < 2) return { error: "Name is required" };
-  if (role.length < 2 || role.length > 160) return { error: "Role is required" };
+  if (role.length < 2) return { error: "Role is required" };
+  if (role.length > 40) return { error: "Use cargos mais curtos: o limite atual da base de dados é 40 caracteres." };
   if (!Number.isFinite(hours) || hours < 1 || hours > 60) return { error: "Invalid weekly hours" };
 
   return {

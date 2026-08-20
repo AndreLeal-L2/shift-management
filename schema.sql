@@ -35,6 +35,15 @@ DROP POLICY IF EXISTS "employees_owner_delete" ON employees;
 DROP POLICY IF EXISTS "sales_history_owner_select" ON sales_history;
 DROP POLICY IF EXISTS "sales_history_owner_insert" ON sales_history;
 
+ALTER TABLE employees
+DROP CONSTRAINT IF EXISTS employees_role_check;
+
+ALTER TABLE employees
+DROP CONSTRAINT IF EXISTS employees_role_len;
+
+ALTER TABLE employees
+ADD CONSTRAINT employees_role_len CHECK (char_length(role) BETWEEN 2 AND 160) NOT VALID;
+
 CREATE POLICY "employees_owner_select"
 ON employees FOR SELECT
 TO authenticated
