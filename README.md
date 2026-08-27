@@ -1,6 +1,6 @@
 # Relleno Shifts
 
-Relleno Shifts e uma aplicacao web para gerir escalas de trabalho de forma simples, visual e rapida. A ferramenta ajuda uma loja ou equipa operacional a transformar disponibilidade, cargos, limites de horas e regras de funcionamento numa escala semanal pronta a usar.
+Relleno Shifts e uma aplicacao web para gerir escalas de trabalho de forma simples, visual e rapida. A ferramenta ajuda uma loja ou equipa operacional a transformar disponibilidade, cargos, cargas horarias semanais e regras de funcionamento numa escala semanal pronta a usar.
 
 Em vez de montar horarios manualmente em folhas soltas, o Relleno Shifts centraliza a equipa, calcula sugestoes de turnos e permite ajustar a escala depois de gerada.
 
@@ -29,7 +29,7 @@ Em vez de montar horarios manualmente em folhas soltas, o Relleno Shifts central
 
 ## Funcionalidades
 
-- Gestao de colaboradores com nome, cargos e limite de horas semanais.
+- Gestao de colaboradores com nome, cargos e horas semanais a cumprir.
 - Suporte para mais de um cargo por colaborador, como `Cozinha`, `Caixa` e `Sala`.
 - Disponibilidade semanal por dia e por turno.
 - Horarios especificos de disponibilidade, incluindo varios intervalos no mesmo dia.
@@ -42,9 +42,9 @@ Em vez de montar horarios manualmente em folhas soltas, o Relleno Shifts central
 
 ## Como Funciona
 
-1. A gestao adiciona os colaboradores e define cargos, horas maximas e disponibilidade.
+1. A gestao adiciona os colaboradores e define cargos, horas semanais a cumprir e disponibilidade.
 2. A loja configura as regras de operacao, como horario de abertura, fecho e necessidade por turno.
-3. O sistema cruza disponibilidade, limites de horas e necessidades da semana.
+3. O sistema cruza disponibilidade, cargas semanais e necessidades da semana.
 4. A escala sugerida e gerada automaticamente.
 5. A gestao pode editar entradas e saidas diretamente na escala.
 
@@ -70,7 +70,7 @@ Os colaboradores e historico de vendas ficam guardados no Supabase atraves das f
 
 Requisitos:
 
-- Node.js 22 ou superior.
+- Node.js 24.
 - npm.
 
 Instale as dependencias:

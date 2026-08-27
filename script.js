@@ -16,6 +16,7 @@ const API_BASE = "/api";
 const LOCAL_EMPLOYEES_KEY = "rellenoShiftsEmployees";
 const LOCAL_SALES_KEY = "rellenoShiftsSalesHistory";
 const LOCAL_MIGRATION_KEY = "rellenoShiftsRemoteMigrationDone";
+const MIN_ASSIGNABLE_HOURS = 0.5;
 const memoryStore = {};
 
 // State for active page, view mode and selected day
@@ -368,6 +369,208 @@ function isEmployeeAvailable(employee, dayKey, shift, openTime = "08:30", closeT
   }
 
   return false;
+}
+
+function employeeScheduleKey(employee) {
+  return String(employee?.id || employee?.name || "");
+}
+
+function isSameEmployee(a, b) {
+  const aId = a?.id ? String(a.id) : "";
+  const bId = b?.id ? String(b.id) : "";
+  if (aId && bId) return aId === bId;
+  return String(a?.name || "") === String(b?.name || "");
+}
+
+function getWeeklyHoursTarget(employee) {
+  return Math.max(0, Number(employee?.maxHours || 0));
+}
+
+function roundHours(hours) {
+  return Math.round(Number(hours || 0) * 100) / 100;
+}
+
+function getAssignedHoursFor(employee, hoursMap = assignedHours) {
+  return Number(hoursMap.get(employeeScheduleKey(employee)) || 0);
+}
+
+function setAssignedHoursFor(employee, hours, hoursMap = assignedHours) {
+  const key = employeeScheduleKey(employee);
+  if (!key) return;
+
+  const rounded = roundHours(hours);
+  if (rounded <= 0.01) {
+    hoursMap.delete(key);
+  } else {
+    hoursMap.set(key, rounded);
+  }
+}
+
+function addAssignedHoursFor(employee, delta, hoursMap = assignedHours) {
+  setAssignedHoursFor(employee, getAssignedHoursFor(employee, hoursMap) + Number(delta || 0), hoursMap);
+}
+
+function getRemainingWeeklyHours(employee, hoursMap = assignedHours) {
+  return Math.max(0, getWeeklyHoursTarget(employee) - getAssignedHoursFor(employee, hoursMap));
+}
+
+function isEmployeeAssignedInDay(schedule, dayKey, employee) {
+  return [...schedule[dayKey].day, ...schedule[dayKey].night].some((person) => isSameEmployee(person, employee));
+}
+
+function formatHours(hours) {
+  return `${roundHours(hours).toLocaleString("pt-PT", { maximumFractionDigits: 1 })}h`;
+}
+
+function createShiftAssignment(employee, dayKey, shift, openTime, closeTime, hoursMap = assignedHours) {
+  const remainingHours = getRemainingWeeklyHours(employee, hoursMap);
+  if (remainingHours < MIN_ASSIGNABLE_HOURS) return null;
+
+  const details = getEmployeeShiftDetails(employee, dayKey, shift, openTime, closeTime);
+  const duration = Math.min(details.duration, remainingHours);
+  if (duration < MIN_ASSIGNABLE_HOURS) return null;
+
+  const assignedDuration = roundHours(duration);
+  const assignedStart = details.start;
+  const assignedEnd = assignedDuration + 0.01 < details.duration
+    ? minutesToTime(timeToMinutes(assignedStart) + assignedDuration * 60)
+    : details.end;
+
+  return {
+    ...employee,
+    assignedHoursText: `${assignedStart}-${assignedEnd}`,
+    assignedDuration,
+    assignedStart,
+    assignedEnd
+  };
+}
+
+function assignEmployeeToShift(schedule, employee, dayKey, shift, openTime, closeTime, hoursMap = assignedHours) {
+  if (!isEmployeeAvailable(employee, dayKey, shift, openTime, closeTime)) return false;
+  if (isEmployeeAssignedInDay(schedule, dayKey, employee)) return false;
+
+  const assignment = createShiftAssignment(employee, dayKey, shift, openTime, closeTime, hoursMap);
+  if (!assignment) return false;
+
+  schedule[dayKey][shift].push(assignment);
+  addAssignedHoursFor(employee, assignment.assignedDuration, hoursMap);
+  return true;
+}
+
+function getShiftDuration(shift, openTime, closeTime) {
+  const window = getShiftWindow(shift, openTime, closeTime);
+  return Math.max(0, (window.end - window.start) / 60);
+}
+
+function calculateEmployeeWeeklyCapacity(employee, openTime, closeTime) {
+  return weekDays.reduce((total, day) => {
+    const possibleDurations = ["day", "night"]
+      .filter((shift) => isEmployeeAvailable(employee, day.key, shift, openTime, closeTime))
+      .map((shift) => getEmployeeShiftDetails(employee, day.key, shift, openTime, closeTime).duration);
+
+    return total + Math.max(0, ...possibleDurations);
+  }, 0);
+}
+
+function getScheduleHoursByEmployeeKey(schedule) {
+  const totals = new Map();
+  if (!schedule) return totals;
+
+  weekDays.forEach((day) => {
+    ["day", "night"].forEach((shift) => {
+      schedule[day.key]?.[shift]?.forEach((person) => {
+        const key = employeeScheduleKey(person);
+        totals.set(key, (totals.get(key) || 0) + (person.assignedDuration || 0));
+      });
+    });
+  });
+
+  return totals;
+}
+
+function getWeeklyLoadGaps(schedule, employeeList = employees) {
+  const totals = getScheduleHoursByEmployeeKey(schedule);
+
+  return employeeList
+    .map((employee) => {
+      const target = getWeeklyHoursTarget(employee);
+      const assigned = totals.get(employeeScheduleKey(employee)) || 0;
+      return {
+        employee,
+        target,
+        assigned,
+        missing: Math.max(0, target - assigned)
+      };
+    })
+    .filter((item) => item.target > 0 && item.missing > 0.1);
+}
+
+function getScheduleCapacityWarnings(employeeList, baseDayRequired, baseNightRequired, openTime, closeTime) {
+  const warnings = [];
+  const totalTargetHours = employeeList.reduce((sum, employee) => sum + getWeeklyHoursTarget(employee), 0);
+  const totalRequiredSlots = (baseDayRequired + baseNightRequired) * weekDays.length;
+  const totalRequiredHours = weekDays.length * (
+    baseDayRequired * getShiftDuration("day", openTime, closeTime) +
+    baseNightRequired * getShiftDuration("night", openTime, closeTime)
+  );
+  const employeesWithHours = employeeList.filter((employee) => getWeeklyHoursTarget(employee) >= MIN_ASSIGNABLE_HOURS);
+
+  if (totalTargetHours > totalRequiredHours + 0.1) {
+    warnings.push(`Carga semanal total (${formatHours(totalTargetHours)}) acima das horas base dos turnos (${formatHours(totalRequiredHours)}); a escala pode precisar de sobrecobertura.`);
+  }
+
+  if (employeesWithHours.length > totalRequiredSlots) {
+    warnings.push(`${employeesWithHours.length} colaboradores com carga semanal para ${totalRequiredSlots} vagas base; a escala pode precisar de sobrecobertura.`);
+  }
+
+  const unavailableEnough = employeeList
+    .map((employee) => ({
+      employee,
+      capacity: calculateEmployeeWeeklyCapacity(employee, openTime, closeTime),
+      target: getWeeklyHoursTarget(employee)
+    }))
+    .filter((item) => item.target > item.capacity + 0.1);
+
+  if (unavailableEnough.length) {
+    const sample = unavailableEnough
+      .slice(0, 3)
+      .map((item) => `${item.employee.name}: ${formatHours(item.capacity)}/${formatHours(item.target)}`)
+      .join(", ");
+    const suffix = unavailableEnough.length > 3 ? ` +${unavailableEnough.length - 3}` : "";
+    warnings.push(`Disponibilidade insuficiente para ${sample}${suffix}.`);
+  }
+
+  return warnings;
+}
+
+function updateScheduleAlert(schedule, weeklyGaps, capacityWarnings) {
+  const alertEl = document.querySelector("#schedule-alert");
+  if (!alertEl) return;
+
+  const messages = [];
+  if (weeklyGaps.length) {
+    const gapsText = weeklyGaps
+      .slice(0, 5)
+      .map((item) => `${item.employee.name}: faltam ${formatHours(item.missing)}`)
+      .join(", ");
+    const suffix = weeklyGaps.length > 5 ? ` +${weeklyGaps.length - 5}` : "";
+    messages.push(`Por cumprir: ${gapsText}${suffix}.`);
+  }
+
+  messages.push(...capacityWarnings);
+
+  if (!schedule || messages.length === 0) {
+    alertEl.hidden = true;
+    alertEl.innerHTML = "";
+    return;
+  }
+
+  const title = weeklyGaps.length ? "Horas semanais por cumprir" : "Atenção à capacidade";
+  alertEl.hidden = false;
+  alertEl.innerHTML = `
+    <strong>${escapeHtml(title)}</strong>
+    ${messages.map((message) => `<span>${escapeHtml(message)}</span>`).join("<br>")}
+  `;
 }
 
 async function loadSalesHistory() {
@@ -885,12 +1088,12 @@ function pickEmployees(dayKey, shift, required, openTime, closeTime) {
     .filter((employee) => isEmployeeAvailable(employee, dayKey, shift, openTime, closeTime))
     .sort((a, b) => {
       // Priorizar colaboradores com menos horas atribuídas
-      const hoursA = assignedHours.get(a.name) || 0;
-      const hoursB = assignedHours.get(b.name) || 0;
+      const hoursA = getAssignedHoursFor(a);
+      const hoursB = getAssignedHoursFor(b);
 
-      // Se um está muito mais perto do limite, dar prioridade ao outro
-      const remainingA = a.maxHours - hoursA;
-      const remainingB = b.maxHours - hoursB;
+      // Se um está mais perto de cumprir a carga, dar prioridade ao outro
+      const remainingA = getWeeklyHoursTarget(a) - hoursA;
+      const remainingB = getWeeklyHoursTarget(b) - hoursB;
 
       // Primeiro, ordenar por quem tem mais horas disponíveis
       if (remainingA !== remainingB) {
@@ -904,19 +1107,11 @@ function pickEmployees(dayKey, shift, required, openTime, closeTime) {
   const selected = [];
 
   for (const employee of available) {
-    const currentHours = assignedHours.get(employee.name) || 0;
-    const details = getEmployeeShiftDetails(employee, dayKey, shift, openTime, closeTime);
-    const duration = details.duration;
+    const assignment = createShiftAssignment(employee, dayKey, shift, openTime, closeTime);
 
-    if (currentHours + duration <= employee.maxHours) {
-      selected.push({
-        ...employee,
-        assignedHoursText: details.display,
-        assignedDuration: duration,
-        assignedStart: details.start,
-        assignedEnd: details.end
-      });
-      assignedHours.set(employee.name, currentHours + duration);
+    if (assignment) {
+      selected.push(assignment);
+      addAssignedHoursFor(employee, assignment.assignedDuration);
     }
   }
 
@@ -962,6 +1157,7 @@ function clearSchedule() {
     coverageStatusEl.className = "status-badge";
   }
 
+  updateScheduleAlert(null, [], []);
   assignedHours.clear();
 }
 
@@ -974,7 +1170,10 @@ const SCHEDULE_WEIGHTS = {
   fairness: 30,            // Equilíbrio de horas
   dailyCoverage: 25,       // Cobertura diária de 8h
   rarity: 20,              // Preservar colaboradores raros
+  weeklyDeficit: 260,      // Prioridade para cumprir carga semanal
+  unassignedEmployee: 120, // Prioridade para quem ainda não entrou na escala
   unfilledSlots: -100,     // Penalização por vagas vazias
+  unmetWeeklyHours: -180,  // Penalização por horas semanais em falta
   employeeOverload: -50,   // Penalização por excesso de horas
   unnecessaryMove: -10     // Penalização por movimentos desnecessários
 };
@@ -996,8 +1195,8 @@ function validateConfiguration(employees, baseDayRequired, baseNightRequired) {
   }
 
   employees.forEach(emp => {
-    if (emp.maxHours <= 0) {
-      errors.push(`Colaborador ${emp.name} tem maxHours inválido: ${emp.maxHours}`);
+    if (getWeeklyHoursTarget(emp) <= 0) {
+      errors.push(`Colaborador ${emp.name} tem horas semanais inválidas: ${emp.maxHours}`);
     }
   });
 
@@ -1050,10 +1249,12 @@ function calculateEmployeeRarity(shiftCandidates) {
 
   Object.keys(shiftCandidates).forEach(dayKey => {
     shiftCandidates[dayKey].day.forEach(emp => {
-      rarity[emp.name] = (rarity[emp.name] || 0) + 1;
+      const key = employeeScheduleKey(emp);
+      rarity[key] = (rarity[key] || 0) + 1;
     });
     shiftCandidates[dayKey].night.forEach(emp => {
-      rarity[emp.name] = (rarity[emp.name] || 0) + 1;
+      const key = employeeScheduleKey(emp);
+      rarity[key] = (rarity[key] || 0) + 1;
     });
   });
 
@@ -1094,10 +1295,10 @@ function calculateShiftScore(candidates, employeeRarity, assignedHours) {
   let totalRarity = 0;
 
   candidates.forEach(emp => {
-    const currentHours = assignedHours.get(emp.name) || 0;
-    const availableHours = emp.maxHours - currentHours;
+    const currentHours = getAssignedHoursFor(emp, assignedHours);
+    const availableHours = Math.max(0, getWeeklyHoursTarget(emp) - currentHours);
     totalAvailableHours += availableHours;
-    totalRarity += employeeRarity[emp.name] || 0;
+    totalRarity += employeeRarity[employeeScheduleKey(emp)] || 0;
   });
 
   const avgAvailableHours = totalAvailableHours / candidates.length;
@@ -1137,8 +1338,8 @@ function calculateShiftNeedScore(dayKey, shift, schedule, baseDayRequired, baseN
   // Considerar horas disponíveis dos candidatos
   let totalAvailableHours = 0;
   candidates.forEach(emp => {
-    const currentHours = assignedHours.get(emp.name) || 0;
-    totalAvailableHours += (emp.maxHours - currentHours);
+    const currentHours = getAssignedHoursFor(emp, assignedHours);
+    totalAvailableHours += Math.max(0, getWeeklyHoursTarget(emp) - currentHours);
   });
 
   if (candidateCount > 0) {
@@ -1174,9 +1375,12 @@ function calculateFutureImpact(employee, dayKey, shift, shiftCandidates, assigne
 }
 
 function calculateAssignmentScore(employee, dayKey, shift, schedule, assignedHours, employeeRarity, shiftDifficulty, shiftNeedScore, shiftCandidates, openTime, closeTime) {
-  const currentHours = assignedHours.get(employee.name) || 0;
-  const remainingHours = employee.maxHours - currentHours;
-  const hoursPercentage = currentHours / employee.maxHours;
+  const targetHours = getWeeklyHoursTarget(employee);
+  const currentHours = getAssignedHoursFor(employee, assignedHours);
+  const remainingHours = Math.max(0, targetHours - currentHours);
+  if (targetHours <= 0 || remainingHours < MIN_ASSIGNABLE_HOURS) return -Infinity;
+
+  const hoursPercentage = currentHours / targetHours;
 
   let score = 0;
 
@@ -1184,19 +1388,24 @@ function calculateAssignmentScore(employee, dayKey, shift, schedule, assignedHou
   score += shiftNeedScore * 2;
 
   // Peso: disponibilidade de horas
-  score += (remainingHours / employee.maxHours) * SCHEDULE_WEIGHTS.coverage;
+  score += (remainingHours / targetHours) * SCHEDULE_WEIGHTS.coverage;
 
   // Peso: equilíbrio (preferir quem tem menos % de horas usadas)
   score += (1 - hoursPercentage) * SCHEDULE_WEIGHTS.fairness;
 
-  // Peso: raridade (penalizar uso de colaboradores raros se houver alternativas)
-  const rarity = employeeRarity[employee.name] || 0;
-  score -= rarity * SCHEDULE_WEIGHTS.rarity;
+  // Peso: cumprimento obrigatório da carga semanal
+  score += (remainingHours / targetHours) * SCHEDULE_WEIGHTS.weeklyDeficit;
+  if (currentHours < MIN_ASSIGNABLE_HOURS) {
+    score += SCHEDULE_WEIGHTS.unassignedEmployee;
+  }
 
-  // NOVO: Peso: impacto futuro (preservar colaboradores críticos)
+  // Peso: raridade (ligeira penalização para preservar alternativas)
+  const rarity = employeeRarity[employeeScheduleKey(employee)] || 0;
+  score -= rarity * SCHEDULE_WEIGHTS.rarity * 0.5;
+
+  // Peso: impacto futuro (mantido baixo para não deixar cargas por cumprir)
   const futureImpact = calculateFutureImpact(employee, dayKey, shift, shiftCandidates, assignedHours, openTime, closeTime);
-  // Penalizar uso de colaboradores com alto impacto futuro (poucas alternativas)
-  score -= futureImpact * SCHEDULE_WEIGHTS.rarity * 2;
+  score -= futureImpact * SCHEDULE_WEIGHTS.rarity * 0.25;
 
   // Peso: dificuldade do turno
   const shiftKey = `${dayKey}_${shift}`;
@@ -1240,8 +1449,9 @@ function evaluateSchedule(schedule, baseDayRequired, baseNightRequired, openTime
     // Calcular horas por colaborador
     [...dayShift, ...nightShift].forEach(person => {
       const hours = person.assignedDuration || 7;
+      const key = employeeScheduleKey(person);
       totalHours += hours;
-      employeeHours[person.name] = (employeeHours[person.name] || 0) + hours;
+      employeeHours[key] = (employeeHours[key] || 0) + hours;
     });
   });
 
@@ -1264,12 +1474,17 @@ function evaluateSchedule(schedule, baseDayRequired, baseNightRequired, openTime
   }
 
   // Pontuação por equilíbrio de horas dos colaboradores
-  const hoursArray = Object.values(employeeHours);
+  const hoursArray = employees.map((employee) => employeeHours[employeeScheduleKey(employee)] || 0);
   if (hoursArray.length > 0) {
     const avgHours = totalHours / hoursArray.length;
     const variance = hoursArray.reduce((sum, h) => sum + Math.pow(h - avgHours, 2), 0) / hoursArray.length;
     score -= Math.sqrt(variance) * SCHEDULE_WEIGHTS.fairness;
   }
+
+  const weeklyGaps = getWeeklyLoadGaps(schedule, employees);
+  const missingWeeklyHours = weeklyGaps.reduce((sum, item) => sum + item.missing, 0);
+  score += missingWeeklyHours * SCHEDULE_WEIGHTS.unmetWeeklyHours;
+  score -= weeklyGaps.filter((item) => item.assigned < MIN_ASSIGNABLE_HOURS).length * SCHEDULE_WEIGHTS.unassignedEmployee;
 
   // Penalização por turnos sem cobertura
   score += emptyShifts * SCHEDULE_WEIGHTS.unfilledSlots * 2;
@@ -1310,34 +1525,40 @@ function validateScheduleIntegrity(schedule, assignedHours, employees, openTime,
   weekDays.forEach(day => {
     const dayShift = schedule[day.key].day;
     const nightShift = schedule[day.key].night;
-    const allNames = [...dayShift, ...nightShift].map(p => p.name);
+    const allKeys = [...dayShift, ...nightShift].map((person) => employeeScheduleKey(person));
 
-    const duplicates = allNames.filter((name, index) => allNames.indexOf(name) !== index);
+    const duplicates = allKeys.filter((key, index) => allKeys.indexOf(key) !== index);
     if (duplicates.length > 0) {
-      errors.push(`${day.label}: Colaborador duplicado no mesmo dia: ${duplicates.join(", ")}`);
+      const names = duplicates
+        .map((key) => [...dayShift, ...nightShift].find((person) => employeeScheduleKey(person) === key)?.name || key)
+        .join(", ");
+      errors.push(`${day.label}: Colaborador duplicado no mesmo dia: ${names}`);
     }
   });
 
   // Verificar consistência de horas
   const calculatedHours = {};
+  const employeeNames = {};
   weekDays.forEach(day => {
     [...schedule[day.key].day, ...schedule[day.key].night].forEach(person => {
-      calculatedHours[person.name] = (calculatedHours[person.name] || 0) + (person.assignedDuration || 7);
+      const key = employeeScheduleKey(person);
+      employeeNames[key] = person.name;
+      calculatedHours[key] = (calculatedHours[key] || 0) + (person.assignedDuration || 7);
     });
   });
 
-  Object.keys(calculatedHours).forEach(name => {
-    const assigned = assignedHours.get(name) || 0;
-    if (Math.abs(calculatedHours[name] - assigned) > 0.1) {
-      errors.push(`Inconsistência de horas para ${name}: escala=${calculatedHours[name]}, assignedHours=${assigned}`);
+  Object.keys(calculatedHours).forEach(key => {
+    const assigned = assignedHours.get(key) || 0;
+    if (Math.abs(calculatedHours[key] - assigned) > 0.1) {
+      errors.push(`Inconsistência de horas para ${employeeNames[key] || key}: escala=${calculatedHours[key]}, assignedHours=${assigned}`);
     }
   });
 
-  // Verificar limites de horas
-  Object.keys(calculatedHours).forEach(name => {
-    const emp = employees.find(e => e.name === name);
-    if (emp && calculatedHours[name] > emp.maxHours) {
-      errors.push(`${name} excede maxHours: ${calculatedHours[name]} > ${emp.maxHours}`);
+  // Verificar horas semanais
+  Object.keys(calculatedHours).forEach(key => {
+    const emp = employees.find((employee) => employeeScheduleKey(employee) === key);
+    if (emp && calculatedHours[key] > getWeeklyHoursTarget(emp) + 0.1) {
+      errors.push(`${emp.name} excede horas semanais: ${calculatedHours[key]} > ${getWeeklyHoursTarget(emp)}`);
     }
   });
 
@@ -1355,7 +1576,7 @@ function recalculateAssignedHoursFromSchedule(schedule) {
   weekDays.forEach((day) => {
     ["day", "night"].forEach((shift) => {
       schedule[day.key][shift].forEach((person) => {
-        assignedHours.set(person.name, (assignedHours.get(person.name) || 0) + (person.assignedDuration || 0));
+        addAssignedHoursFor(person, person.assignedDuration || 0);
       });
     });
   });
@@ -1400,6 +1621,7 @@ function generateSchedule() {
       coverageStatusEl.textContent = "Sem colaboradores";
       coverageStatusEl.className = "status-badge warning";
     }
+    updateScheduleAlert(null, [], []);
     if (window.lucide) window.lucide.createIcons();
     return;
   }
@@ -1440,41 +1662,25 @@ function generateSchedule() {
     if (schedule[dayKey][shift].length > 0) continue; // Já tem alguém
 
     const candidates = shiftCandidates[dayKey][shift];
-    for (const employee of candidates) {
-      const currentHours = assignedHours.get(employee.name) || 0;
-      const details = getEmployeeShiftDetails(employee, dayKey, shift, openTime, closeTime);
-      const duration = details.duration;
+    const shiftNeedScore = calculateShiftNeedScore(dayKey, shift, schedule, baseDayRequired, baseNightRequired, shiftCandidates, assignedHours);
+    const scoredCandidates = candidates
+      .map((emp) => ({
+        emp,
+        score: calculateAssignmentScore(emp, dayKey, shift, schedule, assignedHours, employeeRarity, shiftDifficulty, shiftNeedScore, shiftCandidates, openTime, closeTime)
+      }))
+      .filter((candidate) => Number.isFinite(candidate.score))
+      .sort((a, b) => b.score - a.score);
 
-      // HARD CONSTRAINT: Não pode trabalhar dia e noite no mesmo dia
-      const alreadyAssignedInDay = [...schedule[dayKey].day, ...schedule[dayKey].night].some(p => p.name === employee.name);
-
-      // HARD CONSTRAINT: Não pode exceder maxHours
-      if (!alreadyAssignedInDay && currentHours + duration <= employee.maxHours) {
-        schedule[dayKey][shift].push({
-          ...employee,
-          assignedHoursText: details.display,
-          assignedDuration: duration,
-          assignedStart: details.start,
-          assignedEnd: details.end
-        });
-        assignedHours.set(employee.name, currentHours + duration);
+    for (const { emp } of scoredCandidates) {
+      if (assignEmployeeToShift(schedule, emp, dayKey, shift, openTime, closeTime)) {
         break;
       }
     }
   }
 
-  // PASSO 6: Preencher vagas restantes com ordem dinâmica baseada em necessidade
-  let totalRemainingSlots = 0;
-  weekDays.forEach(day => {
-    const dayRequired = baseDayRequired;
-    const nightRequired = baseNightRequired;
-    const currentDayCount = schedule[day.key].day.length;
-    const currentNightCount = schedule[day.key].night.length;
-    totalRemainingSlots += Math.max(0, dayRequired - currentDayCount) + Math.max(0, nightRequired - currentNightCount);
-  });
-
-  // Enquanto houver vagas restantes
-  while (totalRemainingSlots > 0) {
+  // PASSO 5: Preencher vagas restantes com ordem dinâmica baseada em necessidade
+  const blockedSlots = new Set();
+  while (true) {
     // Calcular necessidade de todos os turnos
     let allShifts = [];
     weekDays.forEach(day => {
@@ -1483,10 +1689,10 @@ function generateSchedule() {
       const currentDayCount = schedule[day.key].day.length;
       const currentNightCount = schedule[day.key].night.length;
 
-      if (currentDayCount < dayRequired) {
+      if (currentDayCount < dayRequired && !blockedSlots.has(`${day.key}:day:${currentDayCount}`)) {
         allShifts.push({ dayKey: day.key, shift: "day" });
       }
-      if (currentNightCount < nightRequired) {
+      if (currentNightCount < nightRequired && !blockedSlots.has(`${day.key}:night:${currentNightCount}`)) {
         allShifts.push({ dayKey: day.key, shift: "night" });
       }
     });
@@ -1506,41 +1712,93 @@ function generateSchedule() {
     const currentCount = schedule[dayKey][shift].length;
 
     if (currentCount >= required) {
-      totalRemainingSlots--;
       continue;
     }
 
     const candidates = shiftCandidates[dayKey][shift];
     const shiftNeedScore = calculateShiftNeedScore(dayKey, shift, schedule, baseDayRequired, baseNightRequired, shiftCandidates, assignedHours);
 
-    const scoredCandidates = candidates.map(emp => ({
-      emp,
-      score: calculateAssignmentScore(emp, dayKey, shift, schedule, assignedHours, employeeRarity, shiftDifficulty, shiftNeedScore, shiftCandidates, openTime, closeTime)
-    })).sort((a, b) => b.score - a.score);
+    const scoredCandidates = candidates
+      .map(emp => ({
+        emp,
+        score: calculateAssignmentScore(emp, dayKey, shift, schedule, assignedHours, employeeRarity, shiftDifficulty, shiftNeedScore, shiftCandidates, openTime, closeTime)
+      }))
+      .filter((candidate) => Number.isFinite(candidate.score))
+      .sort((a, b) => b.score - a.score);
 
+    let assignedThisRound = false;
     for (const { emp } of scoredCandidates) {
-      const currentHours = assignedHours.get(emp.name) || 0;
-      const details = getEmployeeShiftDetails(emp, dayKey, shift, openTime, closeTime);
-      const duration = details.duration;
-
-      const alreadyAssignedInDay = [...schedule[dayKey].day, ...schedule[dayKey].night].some(p => p.name === emp.name);
-
-      if (!alreadyAssignedInDay && currentHours + duration <= emp.maxHours) {
-        schedule[dayKey][shift].push({
-          ...emp,
-          assignedHoursText: details.display,
-          assignedDuration: duration,
-          assignedStart: details.start,
-          assignedEnd: details.end
-        });
-        assignedHours.set(emp.name, currentHours + duration);
-        totalRemainingSlots--;
+      if (assignEmployeeToShift(schedule, emp, dayKey, shift, openTime, closeTime)) {
+        assignedThisRound = true;
         break;
       }
     }
 
-    // Se não conseguiu preencher, decrementar para evitar loop infinito
-    totalRemainingSlots--;
+    if (!assignedThisRound) {
+      blockedSlots.add(`${dayKey}:${shift}:${currentCount}`);
+    }
+  }
+
+  // PASSO 6: Completar a carga semanal obrigatória, mesmo que gere sobrecobertura.
+  let weeklyLoadGuard = 0;
+  const maxWeeklyLoadAttempts = Math.max(1, employees.length * weekDays.length * 2);
+  while (weeklyLoadGuard < maxWeeklyLoadAttempts) {
+    weeklyLoadGuard++;
+
+    const underTargetEmployees = employees
+      .filter((employee) => getRemainingWeeklyHours(employee) >= MIN_ASSIGNABLE_HOURS)
+      .sort((a, b) => {
+        const remainingA = getRemainingWeeklyHours(a);
+        const remainingB = getRemainingWeeklyHours(b);
+        const ratioA = remainingA / Math.max(1, getWeeklyHoursTarget(a));
+        const ratioB = remainingB / Math.max(1, getWeeklyHoursTarget(b));
+        if (ratioA !== ratioB) return ratioB - ratioA;
+        return remainingB - remainingA;
+      });
+
+    if (underTargetEmployees.length === 0) break;
+
+    let assignedExtraShift = false;
+    for (const employee of underTargetEmployees) {
+      const candidateShifts = [];
+
+      weekDays.forEach((day) => {
+        ["day", "night"].forEach((shift) => {
+          if (!isEmployeeAvailable(employee, day.key, shift, openTime, closeTime)) return;
+          if (isEmployeeAssignedInDay(schedule, day.key, employee)) return;
+
+          const assignment = createShiftAssignment(employee, day.key, shift, openTime, closeTime);
+          if (!assignment) return;
+
+          const required = shift === "day" ? baseDayRequired : baseNightRequired;
+          const currentCount = schedule[day.key][shift].length;
+          candidateShifts.push({
+            dayKey: day.key,
+            shift,
+            duration: assignment.assignedDuration,
+            extraLoad: Math.max(0, currentCount - required),
+            needScore: calculateShiftNeedScore(day.key, shift, schedule, baseDayRequired, baseNightRequired, shiftCandidates, assignedHours)
+          });
+        });
+      });
+
+      candidateShifts.sort((a, b) => {
+        if (a.extraLoad !== b.extraLoad) return a.extraLoad - b.extraLoad;
+        if (a.duration !== b.duration) return b.duration - a.duration;
+        return b.needScore - a.needScore;
+      });
+
+      for (const candidate of candidateShifts) {
+        if (assignEmployeeToShift(schedule, employee, candidate.dayKey, candidate.shift, openTime, closeTime)) {
+          assignedExtraShift = true;
+          break;
+        }
+      }
+
+      if (assignedExtraShift) break;
+    }
+
+    if (!assignedExtraShift) break;
   }
 
   // PASSO 7: Otimização controlada (com limite de iterações)
@@ -1568,43 +1826,30 @@ function generateSchedule() {
           if (dayShift.length >= 3 && targetDayShift.length === 1) {
             for (const person of dayShift) {
               const isAvailable = isEmployeeAvailable(person, targetDay.key, "day", openTime, closeTime);
-              const alreadyInTarget = targetDayShift.some(p => p.name === person.name);
+              const alreadyInTarget = targetDayShift.some(p => isSameEmployee(p, person));
 
               if (isAvailable && !alreadyInTarget) {
                 const candidateSchedule = cloneSchedule(schedule);
                 const candidateHours = cloneAssignedHours(assignedHours);
 
                 // Simular movimento
-                const idx = candidateSchedule[day.key].day.findIndex(p => p.name === person.name);
+                const idx = candidateSchedule[day.key].day.findIndex(p => isSameEmployee(p, person));
                 if (idx !== -1) {
                   candidateSchedule[day.key].day.splice(idx, 1);
-                  const currentHours = candidateHours.get(person.name) || 0;
-                  candidateHours.set(person.name, currentHours - person.assignedDuration);
+                  addAssignedHoursFor(person, -person.assignedDuration, candidateHours);
 
-                  const details = getEmployeeShiftDetails(person, targetDay.key, "day", openTime, closeTime);
-                  if (currentHours - person.assignedDuration + details.duration <= person.maxHours) {
-                    candidateSchedule[targetDay.key].day.push({
-                      ...person,
-                      assignedHoursText: details.display,
-                      assignedDuration: details.duration,
-                      assignedStart: details.start,
-                      assignedEnd: details.end
-                    });
-                    candidateHours.set(person.name, currentHours - person.assignedDuration + details.duration);
+                  const candidateAssignment = createShiftAssignment(person, targetDay.key, "day", openTime, closeTime, candidateHours);
+                  if (candidateAssignment) {
+                    candidateSchedule[targetDay.key].day.push(candidateAssignment);
+                    addAssignedHoursFor(person, candidateAssignment.assignedDuration, candidateHours);
 
                     // Avaliar nova escala
                     const newScore = evaluateSchedule(candidateSchedule, baseDayRequired, baseNightRequired, openTime, closeTime);
                     if (newScore.score > currentScore.score) {
                       schedule[day.key].day.splice(idx, 1);
-                      assignedHours.set(person.name, currentHours - person.assignedDuration);
-                      schedule[targetDay.key].day.push({
-                        ...person,
-                        assignedHoursText: details.display,
-                        assignedDuration: details.duration,
-                        assignedStart: details.start,
-                        assignedEnd: details.end
-                      });
-                      assignedHours.set(person.name, currentHours - person.assignedDuration + details.duration);
+                      addAssignedHoursFor(person, -person.assignedDuration);
+                      schedule[targetDay.key].day.push({ ...candidateAssignment });
+                      addAssignedHoursFor(person, candidateAssignment.assignedDuration);
                       improved = true;
                       break;
                     }
@@ -1619,41 +1864,28 @@ function generateSchedule() {
           if (!improved && nightShift.length >= 3 && targetNightShift.length === 1) {
             for (const person of nightShift) {
               const isAvailable = isEmployeeAvailable(person, targetDay.key, "night", openTime, closeTime);
-              const alreadyInTarget = targetNightShift.some(p => p.name === person.name);
+              const alreadyInTarget = targetNightShift.some(p => isSameEmployee(p, person));
 
               if (isAvailable && !alreadyInTarget) {
                 const candidateSchedule = cloneSchedule(schedule);
                 const candidateHours = cloneAssignedHours(assignedHours);
 
-                const idx = candidateSchedule[day.key].night.findIndex(p => p.name === person.name);
+                const idx = candidateSchedule[day.key].night.findIndex(p => isSameEmployee(p, person));
                 if (idx !== -1) {
                   candidateSchedule[day.key].night.splice(idx, 1);
-                  const currentHours = candidateHours.get(person.name) || 0;
-                  candidateHours.set(person.name, currentHours - person.assignedDuration);
+                  addAssignedHoursFor(person, -person.assignedDuration, candidateHours);
 
-                  const details = getEmployeeShiftDetails(person, targetDay.key, "night", openTime, closeTime);
-                  if (currentHours - person.assignedDuration + details.duration <= person.maxHours) {
-                    candidateSchedule[targetDay.key].night.push({
-                      ...person,
-                      assignedHoursText: details.display,
-                      assignedDuration: details.duration,
-                      assignedStart: details.start,
-                      assignedEnd: details.end
-                    });
-                    candidateHours.set(person.name, currentHours - person.assignedDuration + details.duration);
+                  const candidateAssignment = createShiftAssignment(person, targetDay.key, "night", openTime, closeTime, candidateHours);
+                  if (candidateAssignment) {
+                    candidateSchedule[targetDay.key].night.push(candidateAssignment);
+                    addAssignedHoursFor(person, candidateAssignment.assignedDuration, candidateHours);
 
                     const newScore = evaluateSchedule(candidateSchedule, baseDayRequired, baseNightRequired, openTime, closeTime);
                     if (newScore.score > currentScore.score) {
                       schedule[day.key].night.splice(idx, 1);
-                      assignedHours.set(person.name, currentHours - person.assignedDuration);
-                      schedule[targetDay.key].night.push({
-                        ...person,
-                        assignedHoursText: details.display,
-                        assignedDuration: details.duration,
-                        assignedStart: details.start,
-                        assignedEnd: details.end
-                      });
-                      assignedHours.set(person.name, currentHours - person.assignedDuration + details.duration);
+                      addAssignedHoursFor(person, -person.assignedDuration);
+                      schedule[targetDay.key].night.push({ ...candidateAssignment });
+                      addAssignedHoursFor(person, candidateAssignment.assignedDuration);
                       improved = true;
                       break;
                     }
@@ -1735,6 +1967,8 @@ function updateScheduleCoverageStatus(schedule = currentSchedule) {
   if (!coverageStatusEl || !schedule) return;
 
   const required = getScheduleRequirements();
+  const openTime = document.querySelector("#open-time")?.value || "08:30";
+  const closeTime = document.querySelector("#close-time")?.value || "23:00";
   const emptyShifts = [];
   let conflicts = 0;
 
@@ -1749,12 +1983,19 @@ function updateScheduleCoverageStatus(schedule = currentSchedule) {
     if (nightCount === 0) emptyShifts.push(`${day.label} (noite)`);
   });
 
-  if (emptyShifts.length === 0 && conflicts === 0) {
-    coverageStatusEl.textContent = "Cobertura Completa";
+  const weeklyGaps = getWeeklyLoadGaps(schedule);
+  const capacityWarnings = getScheduleCapacityWarnings(employees, required.day, required.night, openTime, closeTime);
+  updateScheduleAlert(schedule, weeklyGaps, capacityWarnings);
+
+  if (emptyShifts.length === 0 && conflicts === 0 && weeklyGaps.length === 0) {
+    coverageStatusEl.textContent = "Cobertura e horas completas";
     coverageStatusEl.className = "status-badge success";
   } else if (emptyShifts.length > 0) {
     coverageStatusEl.textContent = `Sem cobertura em: ${emptyShifts.join(", ")}`;
     coverageStatusEl.className = "status-badge error";
+  } else if (weeklyGaps.length > 0) {
+    coverageStatusEl.textContent = `Horas em falta: ${weeklyGaps.length} colaborador${weeklyGaps.length > 1 ? "es" : ""}`;
+    coverageStatusEl.className = "status-badge warning";
   } else {
     coverageStatusEl.textContent = `Faltam ${conflicts} vaga${conflicts > 1 ? "s" : ""} - escala ajustável`;
     coverageStatusEl.className = "status-badge warning";
@@ -1765,7 +2006,7 @@ function assignedEmployeeIdsForDay(dayKey) {
   const daySchedule = currentSchedule?.[dayKey];
   if (!daySchedule) return new Set();
   return new Set(
-    [...daySchedule.day, ...daySchedule.night].map((person) => String(person.id)),
+    [...daySchedule.day, ...daySchedule.night].map((person) => employeeScheduleKey(person)),
   );
 }
 
@@ -1776,7 +2017,7 @@ function scheduleHoursByEmployeeId(schedule = currentSchedule) {
   weekDays.forEach((day) => {
     ["day", "night"].forEach((shift) => {
       schedule[day.key]?.[shift]?.forEach((person) => {
-        const key = String(person.id);
+        const key = employeeScheduleKey(person);
         totals.set(key, (totals.get(key) || 0) + (person.assignedDuration || 0));
       });
     });
@@ -1792,17 +2033,20 @@ function scheduleAddOptions(dayKey, shiftKey) {
   const totals = scheduleHoursByEmployeeId();
 
   return employees
-    .filter((employee) => !assignedToday.has(String(employee.id)))
+    .filter((employee) => !assignedToday.has(employeeScheduleKey(employee)))
     .map((employee) => {
       const details = getEmployeeShiftDetails(employee, dayKey, shiftKey, openTime, closeTime);
       const isAvailable = isEmployeeAvailable(employee, dayKey, shiftKey, openTime, closeTime);
-      const totalAfter = (totals.get(String(employee.id)) || 0) + details.duration;
+      const currentTotal = totals.get(employeeScheduleKey(employee)) || 0;
+      const remainingHours = getWeeklyHoursTarget(employee) - currentTotal;
+      const totalAfter = currentTotal + details.duration;
       const warnings = [];
       if (!isAvailable) warnings.push("fora da disponibilidade");
-      if (totalAfter > employee.maxHours) warnings.push("acima das horas");
+      if (remainingHours < MIN_ASSIGNABLE_HOURS) warnings.push("sem horas restantes");
+      else if (totalAfter > getWeeklyHoursTarget(employee)) warnings.push(`ajusta para ${formatHours(remainingHours)}`);
       const suffix = warnings.length ? ` (${warnings.join(", ")})` : "";
       return {
-        id: String(employee.id),
+        id: employeeScheduleKey(employee),
         label: `${employee.name} · ${roleLabel(employee.role)}${suffix}`,
       };
     });
@@ -1816,25 +2060,25 @@ function addEmployeeToSchedule(dayKey, shiftKey, employeeId) {
     return;
   }
 
-  const employee = employees.find((item) => String(item.id) === String(employeeId));
+  const employee = employees.find((item) => employeeScheduleKey(item) === String(employeeId));
   if (!employee) return;
 
-  if (assignedEmployeeIdsForDay(dayKey).has(String(employee.id))) {
+  if (assignedEmployeeIdsForDay(dayKey).has(employeeScheduleKey(employee))) {
     alert("Esta pessoa já está atribuída neste dia.");
     return;
   }
 
   const openTime = document.querySelector("#open-time")?.value || "08:30";
   const closeTime = document.querySelector("#close-time")?.value || "23:00";
-  const details = getEmployeeShiftDetails(employee, dayKey, shiftKey, openTime, closeTime);
+  const scheduleTotals = getScheduleHoursByEmployeeKey(currentSchedule);
+  const assignment = createShiftAssignment(employee, dayKey, shiftKey, openTime, closeTime, scheduleTotals);
 
-  currentSchedule[dayKey][shiftKey].push({
-    ...employee,
-    assignedHoursText: details.display,
-    assignedDuration: details.duration,
-    assignedStart: details.start,
-    assignedEnd: details.end,
-  });
+  if (!assignment) {
+    alert("Esta pessoa já cumpriu a carga semanal ou não tem horas suficientes para este turno.");
+    return;
+  }
+
+  currentSchedule[dayKey][shiftKey].push(assignment);
 
   recalculateAssignedHoursFromSchedule(currentSchedule);
   renderCurrentSchedule();
@@ -1848,7 +2092,7 @@ function removeEmployeeFromSchedule(dayKey, shiftKey, employeeId) {
   if (!shiftPeople) return;
 
   currentSchedule[dayKey][shiftKey] = shiftPeople.filter(
-    (person) => String(person.id) !== String(employeeId),
+    (person) => employeeScheduleKey(person) !== String(employeeId),
   );
 
   recalculateAssignedHoursFromSchedule(currentSchedule);
@@ -1916,6 +2160,7 @@ function renderShift(dayKey, shiftKey, name, hours, people, required) {
   const chips = people
     .map((person) => {
       const roles = splitRoles(person.role);
+      const personKey = employeeScheduleKey(person);
       const roleBadges = roles
         .map((role) => `<span class="chip-role ${escapeHtml(getRoleBadgeClass(role))}">${escapeHtml(role)}</span>`)
         .join("");
@@ -1930,14 +2175,14 @@ function renderShift(dayKey, shiftKey, name, hours, people, required) {
             <span class="chip-avatar">${escapeHtml(person.name.slice(0, 1).toUpperCase())}</span>
             <span class="chip-name">${escapeHtml(displayName)}</span>
             <span class="chip-roles">${roleBadges || `<span class="chip-role ${escapeHtml(getRoleBadgeClass(person.role))}">${escapeHtml(roleLabel(person.role))}</span>`}</span>
-            <button class="icon-btn chip-remove-btn" type="button" data-remove-from-schedule="${escapeHtml(dayKey)}:${escapeHtml(shiftKey)}:${escapeHtml(person.id)}" aria-label="Remover ${escapeHtml(person.name)} deste turno">
+            <button class="icon-btn chip-remove-btn" type="button" data-remove-from-schedule="${escapeHtml(dayKey)}:${escapeHtml(shiftKey)}:${escapeHtml(personKey)}" aria-label="Remover ${escapeHtml(person.name)} deste turno">
               <i data-lucide="user-minus"></i>
             </button>
           </div>
           <div class="chip-edit-hours">
-            <input type="time" value="${escapeHtml(start)}" data-schedule-start="${escapeHtml(person.id)}" data-day="${escapeHtml(dayKey)}" data-shift="${escapeHtml(shiftKey)}" aria-label="Entrada de ${escapeHtml(person.name)}">
+            <input type="time" value="${escapeHtml(start)}" data-schedule-start="${escapeHtml(personKey)}" data-day="${escapeHtml(dayKey)}" data-shift="${escapeHtml(shiftKey)}" aria-label="Entrada de ${escapeHtml(person.name)}">
             <span>até</span>
-            <input type="time" value="${escapeHtml(end)}" data-schedule-end="${escapeHtml(person.id)}" data-day="${escapeHtml(dayKey)}" data-shift="${escapeHtml(shiftKey)}" aria-label="Saída de ${escapeHtml(person.name)}">
+            <input type="time" value="${escapeHtml(end)}" data-schedule-end="${escapeHtml(personKey)}" data-day="${escapeHtml(dayKey)}" data-shift="${escapeHtml(shiftKey)}" aria-label="Saída de ${escapeHtml(person.name)}">
           </div>
           <div class="chip-hours-badge">${escapeHtml(hoursText)} · ${(person.assignedDuration || durationBetweenTimes(start, end)).toFixed(1)}h</div>
         </div>
@@ -2065,15 +2310,30 @@ function handleScheduleTimeEdit(event) {
   const dayKey = input.dataset.day;
   const shiftKey = input.dataset.shift;
   const employeeId = input.dataset.scheduleStart || input.dataset.scheduleEnd;
-  const person = currentSchedule[dayKey]?.[shiftKey]?.find((item) => String(item.id) === String(employeeId));
+  const person = currentSchedule[dayKey]?.[shiftKey]?.find((item) => employeeScheduleKey(item) === String(employeeId));
   if (!person) return;
 
   const chip = input.closest(".person-chip");
   const startInput = chip?.querySelector("[data-schedule-start]");
   const endInput = chip?.querySelector("[data-schedule-end]");
   const start = startInput?.value || person.assignedStart || "09:00";
-  const end = endInput?.value || person.assignedEnd || "17:00";
-  const duration = durationBetweenTimes(start, end);
+  let end = endInput?.value || person.assignedEnd || "17:00";
+  let duration = durationBetweenTimes(start, end);
+  const totals = getScheduleHoursByEmployeeKey(currentSchedule);
+  const currentTotal = totals.get(employeeScheduleKey(person)) || 0;
+  const totalWithoutCurrentShift = Math.max(0, currentTotal - (person.assignedDuration || 0));
+  const maxAllowedDuration = getWeeklyHoursTarget(person) - totalWithoutCurrentShift;
+
+  if (duration > maxAllowedDuration + 0.01) {
+    if (maxAllowedDuration < MIN_ASSIGNABLE_HOURS) {
+      if (startInput) startInput.value = person.assignedStart || start;
+      if (endInput) endInput.value = person.assignedEnd || end;
+      return;
+    }
+    duration = Math.max(MIN_ASSIGNABLE_HOURS, maxAllowedDuration);
+    end = minutesToTime(timeToMinutes(start) + duration * 60);
+    if (endInput) endInput.value = end;
+  }
 
   person.assignedStart = start;
   person.assignedEnd = end;
@@ -2083,6 +2343,7 @@ function handleScheduleTimeEdit(event) {
 
   const badge = chip?.querySelector(".chip-hours-badge");
   if (badge) badge.textContent = `${person.assignedHoursText} · ${duration.toFixed(1)}h`;
+  updateScheduleCoverageStatus(currentSchedule);
   renderStatistics();
 }
 
