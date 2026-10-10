@@ -1,123 +1,123 @@
 # Relleno Shifts
 
-Relleno Shifts e uma aplicacao web para gerir escalas de trabalho de forma simples, visual e rapida. A ferramenta ajuda uma loja ou equipa operacional a transformar disponibilidade, cargos, cargas horarias semanais e regras de funcionamento numa escala semanal pronta a usar.
+Relleno Shifts is a web application for managing work schedules in a simple, visual, and fast way. The tool helps a store or operations team turn availability, roles, weekly workloads, and operating rules into a weekly schedule ready to use.
 
-Em vez de montar horarios manualmente em folhas soltas, o Relleno Shifts centraliza a equipa, calcula sugestoes de turnos e permite ajustar a escala depois de gerada.
+Instead of building schedules manually in scattered spreadsheets, Relleno Shifts centralizes the team, calculates shift suggestions, and allows the schedule to be adjusted after it is generated.
 
-## Conteudo
+## Contents
 
-- [O Que Resolve](#o-que-resolve)
-- [Funcionalidades](#funcionalidades)
-- [Como Funciona](#como-funciona)
-- [Acesso](#acesso)
-- [Tecnologias](#tecnologias)
-- [Desenvolvimento](#desenvolvimento)
+- [What It Solves](#what-it-solves)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Access](#access)
+- [Technologies](#technologies)
+- [Development](#development)
 - [Scripts](#scripts)
 - [Deploy](#deploy)
-- [Variaveis de Ambiente](#variaveis-de-ambiente)
+- [Environment Variables](#environment-variables)
 - [API](#api)
-- [Base de Dados](#base-de-dados)
+- [Database](#database)
 
-## O Que Resolve
+## What It Solves
 
-- Reduz o tempo gasto a montar escalas semanais.
-- Evita colocar colaboradores fora da sua disponibilidade.
-- Ajuda a equilibrar horas entre a equipa.
-- Mostra rapidamente onde faltam pessoas por turno.
-- Permite adaptar a escala ao volume previsto de vendas.
-- Funciona bem em desktop e mobile.
+- Reduces the time spent building weekly schedules.
+- Avoids assigning employees outside their availability.
+- Helps balance hours across the team.
+- Quickly shows where people are missing by shift.
+- Allows the schedule to adapt to the expected sales volume.
+- Works well on desktop and mobile.
 
-## Funcionalidades
+## Features
 
-- Gestao de colaboradores com nome, cargos e horas semanais a cumprir.
-- Suporte para mais de um cargo por colaborador, como `Cozinha`, `Caixa` e `Sala`.
-- Disponibilidade semanal por dia e por turno.
-- Horarios especificos de disponibilidade, incluindo varios intervalos no mesmo dia.
-- Geracao automatica da melhor escala possivel com base nas regras definidas.
-- Edicao manual dos horarios depois da escala ser gerada.
-- Regras de loja configuraveis, incluindo abertura, fecho e numero de pessoas por turno.
-- Historico e previsao de vendas por dia.
-- Dashboard com cobertura, equipa ativa, vagas por preencher e horas por cargo.
-- Interface responsiva para consulta e ajustes no telemovel.
+- Employee management with name, roles, and weekly target hours.
+- Support for more than one role per employee, such as `Kitchen`, `Cashier`, and `Floor`.
+- Weekly availability by day and shift.
+- Specific availability times, including multiple intervals on the same day.
+- Automatic generation of the best possible schedule based on the defined rules.
+- Manual editing of times after the schedule is generated.
+- Configurable store rules, including opening time, closing time, and required people per shift.
+- Sales history and forecast by day.
+- Dashboard with coverage, active team, open slots, and hours by role.
+- Responsive interface for viewing and adjusting schedules on mobile.
 
-## Como Funciona
+## How It Works
 
-1. A gestao adiciona os colaboradores e define cargos, horas semanais a cumprir e disponibilidade.
-2. A loja configura as regras de operacao, como horario de abertura, fecho e necessidade por turno.
-3. O sistema cruza disponibilidade, cargas semanais e necessidades da semana.
-4. A escala sugerida e gerada automaticamente.
-5. A gestao pode editar entradas e saidas diretamente na escala.
+1. Management adds employees and defines roles, weekly target hours, and availability.
+2. The store configures operating rules, such as opening time, closing time, and shift requirements.
+3. The system combines availability, weekly workloads, and the week's needs.
+4. The suggested schedule is generated automatically.
+5. Management can edit clock-in and clock-out times directly in the schedule.
 
-## Acesso
+## Access
 
-A versao atual usa um login administrativo simples:
+The current version uses a simple administrative login:
 
 ```text
 Email: admin@relleno.pt
 Password: admin123
 ```
 
-Os colaboradores e historico de vendas ficam guardados no Supabase atraves das funcoes `/api`. Assim, qualquer dispositivo que entre com o administrador ve a mesma equipa, o mesmo historico e a mesma base operacional.
+Employees and sales history are stored in Supabase through the `/api` functions. Any device logged in as the administrator sees the same team, the same history, and the same operational base.
 
-## Tecnologias
+## Technologies
 
-- HTML, CSS e JavaScript sem framework frontend.
-- Vercel para hosting e funcoes serverless em `/api`.
-- Supabase como base de dados remota para colaboradores e historico de vendas.
-- Lucide Icons para iconografia da interface.
+- HTML, CSS, and JavaScript without a frontend framework.
+- Vercel for hosting and serverless functions in `/api`.
+- Supabase as the remote database for employees and sales history.
+- Lucide Icons for interface iconography.
 
-## Desenvolvimento
+## Development
 
-Requisitos:
+Requirements:
 
 - Node.js 24.
 - npm.
 
-Instale as dependencias:
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-Valide a sintaxe:
+Validate syntax:
 
 ```bash
 npm run check
 ```
 
-Execute em desenvolvimento:
+Run in development:
 
 ```bash
 npm run dev
 ```
 
-Por padrao, `vercel dev` abre a aplicacao localmente e serve tambem as funcoes em `/api`.
+By default, `vercel dev` opens the application locally and also serves the functions in `/api`.
 
 ## Scripts
 
-| Comando | Descricao |
+| Command | Description |
 | --- | --- |
-| `npm run dev` | Inicia o ambiente local com Vercel. |
-| `npm run check` | Valida a sintaxe dos ficheiros JavaScript principais. |
-| `npm run audit` | Executa auditoria de dependencias sem dependencias de desenvolvimento. |
+| `npm run dev` | Starts the local environment with Vercel. |
+| `npm run check` | Validates the syntax of the main JavaScript files. |
+| `npm run audit` | Runs a dependency audit without development dependencies. |
 
 ## Deploy
 
-O projeto esta configurado para Vercel.
+The project is configured for Vercel.
 
 ```bash
 npx vercel deploy --prod
 ```
 
-No dashboard da Vercel, use:
+In the Vercel dashboard, use:
 
 - Framework preset: `Other`
 - Build command: `echo 'No build needed'`
 - Output directory: `./`
 
-## Variaveis de Ambiente
+## Environment Variables
 
-As funcoes API precisam de Supabase configurado no ambiente da Vercel:
+The API functions need Supabase configured in the Vercel environment:
 
 ```env
 SUPABASE_URL=https://your-project.supabase.co
@@ -128,28 +128,28 @@ ADMIN_SESSION_SECRET=change-this-long-random-secret
 ADMIN_OWNER_ID=00000000-0000-0000-0000-000000000001
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` deve existir apenas no servidor/Vercel. Nunca coloque essa chave no browser. Tambem pode usar `SUPABASE_SECRET_KEY` em vez de `SUPABASE_SERVICE_ROLE_KEY` se o projeto ja estiver nas chaves novas da Supabase.
+`SUPABASE_SERVICE_ROLE_KEY` must exist only on the server/Vercel. Never put this key in the browser. You can also use `SUPABASE_SECRET_KEY` instead of `SUPABASE_SERVICE_ROLE_KEY` if the project already uses the newer Supabase keys.
 
-Na primeira entrada depois de uma versao antiga, a app tenta migrar automaticamente colaboradores e historico que ainda existam no `localStorage` do browser para a base remota.
+On the first login after an older version, the app tries to automatically migrate employees and sales history that still exist in the browser's `localStorage` to the remote database.
 
 ## API
 
-As funcoes serverless ficam em `/api`:
+The serverless functions are in `/api`:
 
-| Endpoint | Uso |
+| Endpoint | Use |
 | --- | --- |
-| `/api/auth` | Login administrativo. |
-| `/api/employees` | Leitura e escrita de colaboradores. |
-| `/api/sales` | Leitura e escrita de historico/previsao de vendas. |
+| `/api/auth` | Administrative login. |
+| `/api/employees` | Read and write employees. |
+| `/api/sales` | Read and write sales history/forecast. |
 
-O front-end nao grava colaboradores nem vendas diretamente no browser. O `localStorage` e usado apenas para migrar dados legados criados antes da persistencia remota.
+The front end does not save employees or sales directly in the browser. `localStorage` is used only to migrate legacy data created before remote persistence.
 
-## Base de Dados
+## Database
 
-Para uma base Supabase nova, aplique `schema.sql`.
+For a new Supabase database, apply `schema.sql`.
 
-Para uma base ja existente com politicas antigas, aplique `supabase-security-migration.sql` no SQL Editor da Supabase.
+For an existing database with older policies, apply `supabase-security-migration.sql` in the Supabase SQL Editor.
 
-## Nota de Produto
+## Product Note
 
-O objetivo do Relleno Shifts e ser uma ferramenta operacional: abrir, ajustar e decidir rapido. A interface privilegia leitura clara, controlo manual quando necessario e uma escala semanal que a equipa consegue entender sem explicacao adicional.
+The goal of Relleno Shifts is to be an operational tool: open, adjust, and decide quickly. The interface prioritizes clear reading, manual control when needed, and a weekly schedule that the team can understand without additional explanation.
